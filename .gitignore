@@ -1,0 +1,10 @@
+.gradle/
+build/
+/local.properties
+.idea/
+*.iml
+.DS_Store
+.kotlin/
+captures/
+# dist/ holds the release artefact on purpose but APKs are not committed
+dist/*.apk

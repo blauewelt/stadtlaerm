@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "model": "yamnet (AudioSet ontology, 521 classes)",
+  "comment": "Category score = max of member scores. Dominant = highest category score > threshold, else 'unclassified'. Category order is the tie-break priority (earlier wins). Every name must match a line of yamnet_labels.txt exactly; a unit test enforces this.",
+  "threshold": 0.2,
+  "tie_margin": 0.0,
+  "fallback": { "id": "unclassified", "name_de": "Sonstiges / unklassifiziert" },
+  "categories": [
+    {
+      "id": "loud_vehicle",
+      "name_de": "Töff & Poser",
+      "audioset": [
+        "Motorcycle",
+        "Accelerating, revving, vroom",
+        "Race car, auto racing",
+        "Engine starting"
+      ]
+    },
+    {
+      "id": "road_traffic",
+      "name_de": "Strassenverkehr",
+      "audioset": [
+        "Vehicle",
+        "Car",
+        "Car passing by",
+        "Motor vehicle (road)",
+        "Traffic noise, roadway noise",
+        "Truck",
+        "Bus",
+        "Engine",
+        "Idling",
+        "Heavy engine (low frequency)",
+        "Medium engine (mid frequency)",
+        "Light engine (high frequency)",
+        "Tire squeal",
+        "Skidding",
+        "Vehicle horn, car horn, honking",
+        "Air brake"
+      ]
+    },
+    {
+      "id": "rail_tram",
+      "name_de": "Tram & Bahn",
+      "audioset": [
+        "Rail transport",
+        "Train",
+        "Railroad car, train wagon",
+        "Train wheels squealing",
+        "Subway, metro, underground",
+        "Train horn",
+        "Train whistle"
+      ]
+    },
+    {
+      "id": "aircraft",
+      "name_de": "Flugzeug",
+      "audioset": [
+        "Aircraft",
+        "Aircraft engine",
+        "Jet engine",
+        "Fixed-wing aircraft, airplane",
+        "Propeller, airscrew",
+        "Helicopter"
+      ]
+    },
+    {
+      "id": "construction",
+      "name_de": "Baustelle",
+      "audioset": [
+        "Jackhammer",
+        "Drill",
+        "Power tool",
+        "Sawing",
+        "Hammer",
+        "Sanding",
+        "Chainsaw",
+        "Filing (rasp)"
+      ]
+    },
+    {
+      "id": "voices",
+      "name_de": "Stimmen",
+      "audioset": [
+        "Speech",
+        "Conversation",
+        "Shout",
+        "Yell",
+        "Children shouting",
+        "Children playing",
+        "Crowd",
+        "Chatter",
+        "Laughter",
+        "Hubbub, speech noise, speech babble",
+        "Cheering"
+      ]
+    },
+    {
+      "id": "music",
+      "name_de": "Musik",
+      "audioset": [
+        "Music",
+        "Pop music",
+        "Rock music",
+        "Hip hop music",
+        "Electronic music",
+        "Electronic dance music",
+        "Dance music",
+        "House music",
+        "Techno",
+        "Drum and bass",
+        "Disco",
+        "Reggae",
+        "Singing"
+      ]
+    }
+  ]
+}

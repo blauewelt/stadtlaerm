@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Stadtlärm</string>
+    <string name="notif_channel_name">Messung</string>
+    <string name="notif_channel_desc">Laufende Lärmmessung</string>
+</resources>
