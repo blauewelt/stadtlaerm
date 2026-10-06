@@ -1,10 +1,26 @@
+# Gradle / Kotlin / Android build outputs (any depth, e.g. android/app/build/)
 .gradle/
 build/
-/local.properties
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Machine-specific SDK path, regenerated locally
+local.properties
+
+# IDEs and OS files
 .idea/
 *.iml
 .DS_Store
-.kotlin/
-captures/
-# dist/ holds the release artefact on purpose but APKs are not committed
-dist/*.apk
+
+# Release artefacts: APKs and source zips are published as GitHub release assets, not committed
+dist/
+*.apk
+*.aab
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/

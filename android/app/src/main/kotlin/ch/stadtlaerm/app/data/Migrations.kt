@@ -5,7 +5,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * SQL for schema migrations, kept free of Android types so it can be tested on the JVM against
- * SQLite (see app/src/test/.../MigrationSqlTest.kt).
+ * SQLite (see app/src/test/.../AppJvmTest.kt).
  */
 object MigrationSql {
     /** v2 `minutes` table, exactly as Room generates it (verified by a unit test). */

@@ -7,9 +7,12 @@ likely source using an on-device sound classifier, and summarises every night
 (22:00–06:00, the Swiss night period).
 
 **Privacy by construction:** no audio is ever stored or sent, and the app has no internet
-permission at all. See [PRIVACY.md](PRIVACY.md).
+permission at all. See [PRIVACY.md](../PRIVACY.md).
 
-The UI is German (Swiss spelling); the code and docs are English. License: Apache-2.0.
+The UI is German (Swiss spelling); the code and docs are English. License: [Apache-2.0](../LICENSE).
+
+This is the `android/` part of the [Stadtlärm repository](../README.md); paths and commands
+below are relative to this directory.
 
 ---
 
@@ -64,10 +67,10 @@ so a better model can be swapped in without touching the measurement code.
 
 ## Install (sideload)
 
-1. Copy `dist/stadtlaerm-v0.1.1-debug.apk` to the phone (USB, cloud drive, e-mail to yourself).
+1. Download `stadtlaerm-v0.1.1-debug.apk` from the GitHub release (or build it, see "Build") and copy it to the phone (USB, cloud drive, e-mail to yourself).
 2. Open it on the phone. Android asks to allow installing from that source (Files, Chrome, …):
    allow it once.
-3. Or with a computer: `adb install dist/stadtlaerm-v0.1.1-debug.apk`.
+3. Or with a computer: `adb install stadtlaerm-v0.1.1-debug.apk`.
 4. Start Stadtlärm and allow **microphone** and **notifications** when asked.
 
 Requirements: Android 8.0 (API 26) or newer. Tested only by build and unit tests so far — see
@@ -212,7 +215,7 @@ python3 tools/verify_yamnet.py
 ### Project layout
 
 ```
-dsp/   pure Kotlin/JVM, no Android dependencies — shared with a future ESP32 port
+dsp/   pure Kotlin/JVM, no Android dependencies — shared with the planned ESP32 sensor (../firmware/)
   FrequencyWeighting.kt   A- and Z-weighting (bilinear biquads, 0 dB at 1 kHz)
   TimeWeighting.kt        Fast/Slow exponential averaging
   MeasurementEngine.kt    the pipeline: ticks, seconds, minutes, events, classifier hook
@@ -232,7 +235,7 @@ tools/verify_yamnet.py    model I/O + Kotlin-vs-Python preprocessing check
   pass-by vs idling) collected *with explicit consent* by volunteers.
 - **ESP32 sensor:** a fixed outdoor sensor (ESP32-S3 + MEMS microphone) running the same DSP
   (the `dsp` module is written to port 1:1 to C/C++ or Kotlin/Native) and the same calibration
-  procedure, so phone and sensor data are comparable.
+  procedure, so phone and sensor data are comparable. See [firmware/](../firmware/README.md).
 - Opt-in, aggregated data sharing for a city-wide map (only after a separate privacy review).
 - Per-night charts, Slow time weighting, Lnight/Lden reporting per ISO 1996.
 

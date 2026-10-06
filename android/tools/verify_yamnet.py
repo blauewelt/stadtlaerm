@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Verify the YAMNet model I/O and that the Kotlin classifier pre-processing matches a Python reference.
 
-Usage (from the repository root):
+Usage (from the android/ directory; paths are resolved relative to this script):
     pip install ai-edge-litert scipy numpy
-    python3 tools/verify_yamnet.py [--wav some_16k_or_48k.wav] [--workdir /tmp/x]
+    python3 tools/verify_yamnet.py [--wav some_16k_or_48k.wav] [--workdir verify-out]
 
 Steps:
  1. Load app/src/main/assets/yamnet.tflite, print input/output tensors, check that the label list
