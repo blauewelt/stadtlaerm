@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0 — 2026-10-06
+
+First signed public release. No functional changes to measurement, classification or storage.
+
+- **Signed with the project's release key** (`CN=Christian Frank, O=Stadtlaerm, L=Zuerich, C=CH`,
+  certificate SHA-256 `a3d5d10e…3142be`). Earlier builds were debug builds signed with a
+  development key; Android cannot update across signing keys, so **uninstall any earlier
+  Stadtlärm build first** (export your data before, uninstalling deletes it).
+- Release APK contains only the phone ABIs (`arm64-v8a`, `armeabi-v7a`); the `x86_64` emulator
+  ABI is now in debug builds only. Code shrinking stays off.
+- Repository restructured as a monorepo (`android/`, `firmware/`, `docs/` for the website
+  [stadtlaerm.ch](https://stadtlaerm.ch)); the APK is published at
+  `https://stadtlaerm.ch/download/stadtlaerm.apk`.
+- Optional release signing in Gradle (see README, "Signed release build"); without a key the
+  release build is unsigned, so the public repository builds for everyone.
+
 ## 0.1.1 — 2026-10-06
 
 Review fixes; not yet tested on a device.

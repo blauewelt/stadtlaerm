@@ -1,9 +1,27 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+// Release signing is optional so that anyone can build the public repository.
+// Point Gradle at a keystore.properties file kept OUTSIDE the repository, either with
+//   ./gradlew assembleRelease -Pstadtlaerm.keystoreProperties=/path/to/keystore.properties
+// or with the environment variable STADTLAERM_KEYSTORE_PROPERTIES. The file needs
+// storeFile, storePassword, keyAlias and keyPassword. Without it the release APK is unsigned.
+val keystorePropertiesPath: String? =
+    (findProperty("stadtlaerm.keystoreProperties") as String?)
+        ?: System.getenv("STADTLAERM_KEYSTORE_PROPERTIES")
+val keystoreProperties: Properties? = keystorePropertiesPath
+    ?.takeIf { it.isNotBlank() }
+    ?.let { path ->
+        val file = file(path)
+        require(file.isFile) { "Keystore properties file not found: $path" }
+        Properties().apply { file.inputStream().use { load(it) } }
+    }
 
 android {
     namespace = "ch.stadtlaerm.app"
@@ -13,17 +31,40 @@ android {
         applicationId = "ch.stadtlaerm.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1"
-        ndk {
-            // Phones (arm64/armv7) and the x86_64 emulator; 32-bit x86 dropped to keep the APK smaller.
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        versionCode = 3
+        versionName = "0.2.0"
+    }
+
+    signingConfigs {
+        if (keystoreProperties != null) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                enableV2Signing = true
+                enableV3Signing = true
+            }
         }
     }
 
     buildTypes {
+        // ABI filters are set per build type (AGP merges them with defaultConfig, so they
+        // cannot be narrowed there). 32-bit x86 is never shipped.
+        debug {
+            // Phones (arm64/armv7) and the x86_64 emulator.
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+        }
         release {
+            // Shrinking stays off for now: LiteRT uses reflection/JNI and has not been tested
+            // with R8 rules yet.
             isMinifyEnabled = false
+            isShrinkResources = false
+            isDebuggable = false
+            // Phones only: the x86_64 emulator ABI is left out of the release APK to cut size.
+            // (Debug builds keep it for the emulator.)
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

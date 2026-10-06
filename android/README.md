@@ -1,4 +1,4 @@
-# Stadtlärm — citizen noise measurement for Zürich (Android, v0.1.1)
+# Stadtlärm — citizen noise measurement for Zürich (Android, v0.2.0)
 
 Stadtlärm turns an Android phone into a night-time noise logger. It measures A-weighted
 sound levels the way a sound level meter does (IEC 61672-1 A-weighting, Fast time weighting),
@@ -67,14 +67,29 @@ so a better model can be swapped in without touching the measurement code.
 
 ## Install (sideload)
 
-1. Download `stadtlaerm-v0.1.1-debug.apk` from the GitHub release (or build it, see "Build") and copy it to the phone (USB, cloud drive, e-mail to yourself).
-2. Open it on the phone. Android asks to allow installing from that source (Files, Chrome, …):
-   allow it once.
-3. Or with a computer: `adb install stadtlaerm-v0.1.1-debug.apk`.
-4. Start Stadtlärm and allow **microphone** and **notifications** when asked.
+The signed release APK is published at
+[stadtlaerm.ch/download/stadtlaerm.apk](https://stadtlaerm.ch/download/stadtlaerm.apk)
+(the filename stays the same across versions; [stadtlaerm.ch](https://stadtlaerm.ch) shows the
+current version and its SHA-256). A German step-by-step guide is on the website.
 
-Requirements: Android 8.0 (API 26) or newer. Tested only by build and unit tests so far — see
-"Status" below.
+> **Upgrading from an earlier test build (v0.1.x)?** Those were debug builds signed with a
+> different key, and Android refuses to update an app across signing keys. Export your data
+> (Daten → CSV exportieren), **uninstall the old Stadtlärm**, then install v0.2.0.
+
+1. Download the APK on the phone. If the browser's download dialog refuses to open it, open it
+   from the **Files** app (Dateien → Downloads).
+2. Android asks to allow installing unknown apps from that source (Files, Chrome, …): allow it.
+3. If Play Protect warns about an unknown developer: *More details → Install anyway*.
+4. Or with a computer: `adb install stadtlaerm.apk`.
+5. Start Stadtlärm and allow **microphone** and **notifications** when asked.
+
+To check the download: `sha256sum stadtlaerm.apk` must match the value on the website, and
+`apksigner verify --print-certs stadtlaerm.apk` must show the signer
+`CN=Christian Frank, O=Stadtlaerm, L=Zuerich, C=CH` with certificate SHA-256
+`a3d5d10e69b383846ead4d1aac9ea5df9bc32845237506dcd233f097743142be`.
+
+Requirements: Android 8.0 (API 26) or newer, ARM phone (arm64-v8a or armeabi-v7a). Not yet
+validated on many devices — see "Status" below.
 
 ## Overnight measurement
 
@@ -189,14 +204,17 @@ share sheet. Column names are in the first row (`laeq_db`, `lafmax_db`, `share_l
 - Settings changes (including the classifier level adjustment) apply from the next start of a measurement.
 - Calibration must be done with the app in the foreground; leaving the app aborts the measurement.
 
-## Status of v0.1.1
+## Status of v0.2.0
+
+v0.2.0 is a public **test version**: the first signed release, functionally identical to v0.1.1.
 
 - Built and unit-tested on the JVM: all DSP (A-weighting, Fast weighting, levels, percentiles,
   events, resampler, category mapping, calibration math, night summaries, CSV).
 - Model input pipeline verified against the real `yamnet.tflite` with Python/LiteRT
   (`tools/verify_yamnet.py`).
-- **Not yet run on a real device or emulator.** Audio capture, the foreground service, the
-  LiteRT runtime on Android and all UI screens are untested in practice.
+- **Not yet validated on many devices.** Audio capture, the foreground service, the LiteRT
+  runtime on Android, battery use and the UI need testing on a range of real phones. Reports
+  are welcome as GitHub issues (please include the phone model and Android version).
 
 ## Build
 
@@ -205,6 +223,47 @@ export ANDROID_HOME=/path/to/android-sdk   # platform 35, build-tools 35.0.0
 ./gradlew test assembleDebug
 # APK: app/build/outputs/apk/debug/app-debug.apk
 ```
+
+`./gradlew assembleRelease` without a key produces an **unsigned** release APK
+(`app-release-unsigned.apk`), which Android will not install until it is signed.
+
+### Signed release build
+
+Release signing is optional and configured from a properties file that lives **outside** the
+repository (never commit it or the keystore; `.gitignore` excludes `keystore.properties`,
+`*.jks` and `*.keystore` as a safety net):
+
+```properties
+# e.g. ~/stadtlaerm-keys/keystore.properties  (chmod 600)
+storeFile=/home/you/stadtlaerm-keys/stadtlaerm-release.jks
+storePassword=…
+keyAlias=stadtlaerm
+keyPassword=…
+```
+
+Pass its path as a Gradle property or an environment variable:
+
+```sh
+./gradlew test assembleRelease -Pstadtlaerm.keystoreProperties=$HOME/stadtlaerm-keys/keystore.properties
+# or
+STADTLAERM_KEYSTORE_PROPERTIES=$HOME/stadtlaerm-keys/keystore.properties ./gradlew assembleRelease
+# APK: app/build/outputs/apk/release/app-release.apk
+```
+
+Check the result (build-tools 35):
+
+```sh
+apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk   # v2 + v3, signer DN
+aapt2 dump permissions app/build/outputs/apk/release/app-release.apk                   # no INTERNET
+sha256sum app/build/outputs/apk/release/app-release.apk
+```
+
+To publish, copy it to `../docs/download/stadtlaerm.apk` and update version, size and SHA-256 on
+`../docs/index.html`. The release key cannot be replaced without forcing every user to
+uninstall and reinstall, so keep the keystore and its password backed up.
+
+Release builds contain only `arm64-v8a` and `armeabi-v7a` native code; debug builds also
+include `x86_64` for the emulator. Minification is off (LiteRT has not been tested with R8).
 
 Python cross-check of the classifier pipeline (needs `pip install ai-edge-litert scipy numpy`):
 
