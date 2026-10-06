@@ -42,6 +42,7 @@ import java.time.ZoneId
 import java.util.Locale
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -112,9 +113,10 @@ class MeasurementService : Service() {
 
     private fun startMeasurement() {
         val live = container.live
-        if (live.value.running || live.value.starting) return
         createChannel()
         val hasMic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        // startForeground() must be called for every startForegroundService() — also when a
+        // measurement is already running — otherwise the system kills the app.
         try {
             ServiceCompat.startForeground(
                 this, NOTIFICATION_ID, notification("Messung startet …"),
@@ -124,6 +126,7 @@ class MeasurementService : Service() {
             live.value = LiveState(error = "Vordergrunddienst nicht erlaubt: ${e.message}")
             stopSelf(); return
         }
+        if (live.value.running || live.value.starting) return
         if (!hasMic) {
             live.value = LiveState(error = "Mikrofon-Berechtigung fehlt")
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -131,6 +134,7 @@ class MeasurementService : Service() {
         }
         live.value = LiveState(starting = true)
         stopping = false
+        inferenceBusy.set(false)
         scope.launch {
             try {
                 val c = container
@@ -153,25 +157,55 @@ class MeasurementService : Service() {
                     zone = ZoneId.systemDefault(),
                 )
                 val eng = MeasurementEngine(config, System.currentTimeMillis(), mapper, EngineListener())
-                engine = eng
-                if (settings.wakeLock) acquireWakeLock()
-                val cap = AudioCapture(this@MeasurementService, ::onBlock) { msg ->
-                    container.live.value = container.live.value.copy(error = "Aufnahmefehler: $msg")
-                    // Called on the capture thread: stop from another thread so join() can complete.
-                    scope.launch { stopMeasurement() }
+                // Stop may have been requested (notification "Stopp") while the model was loading.
+                // Commit the start atomically with respect to stopMeasurement(), so a stopped
+                // service never ends up with a running microphone, a held wake lock or a stale
+                // "running" state.
+                synchronized(this@MeasurementService) {
+                    if (stopping) {
+                        releaseClassifier()
+                        return@launch
+                    }
+                    engine = eng
+                    if (settings.wakeLock) acquireWakeLock()
+                    val cap = AudioCapture(this@MeasurementService, ::onBlock) { msg ->
+                        container.live.value = container.live.value.copy(error = "Aufnahmefehler: $msg")
+                        // Called on the capture thread: stop from another thread so join() can complete.
+                        scope.launch { stopMeasurement() }
+                    }
+                    val info = cap.start(source)
+                    capture = cap
+                    live.value = LiveState(
+                        running = true, startedAtMs = System.currentTimeMillis(), audioSource = info.source,
+                        encoding = info.encoding, effects = info.effects, calibrated = cal.calibrated,
+                        calibrationId = cal.id, calibrationOffsetDb = cal.offsetDb,
+                        classifierEnabled = settings.classifierEnabled,
+                    )
                 }
-                val info = cap.start(source)
-                capture = cap
-                live.value = LiveState(
-                    running = true, startedAtMs = System.currentTimeMillis(), audioSource = info.source,
-                    encoding = info.encoding, effects = info.effects, calibrated = cal.calibrated,
-                    calibrationId = cal.id, calibrationOffsetDb = cal.offsetDb,
-                    classifierEnabled = settings.classifierEnabled,
-                )
             } catch (e: Exception) {
                 live.value = LiveState(error = "Start fehlgeschlagen: ${e.message}")
-                stopMeasurement()
+                synchronized(this@MeasurementService) {
+                    if (stopping) releaseClassifier() else stopMeasurement()
+                }
             }
+        }
+    }
+
+    /**
+     * Closes the classifier on its own inference thread, i.e. strictly after any inference that
+     * is still running (closing a LiteRT interpreter during run() is a native use-after-free).
+     */
+    private fun releaseClassifier() {
+        val exec = inference
+        val cls = classifier
+        inference = null
+        classifier = null
+        val close = Runnable { try { cls?.close() } catch (_: Exception) {} }
+        if (exec != null) {
+            try { exec.execute(close) } catch (_: RejectedExecutionException) { close.run() }
+            exec.shutdown()
+        } else {
+            close.run()
         }
     }
 
@@ -253,10 +287,7 @@ class MeasurementService : Service() {
             eng.stop()
         }
         engine = null
-        inference?.shutdown()
-        inference = null
-        classifier?.let { c -> scope.launch { try { c.close() } catch (_: Exception) {} } }
-        classifier = null
+        releaseClassifier()
         frames.clear()
         classifierWindow = FloatArray(ClassifierPreprocessor.YAMNET_INPUT_SAMPLES)
         releaseWakeLock()

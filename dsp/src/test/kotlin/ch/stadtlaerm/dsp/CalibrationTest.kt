@@ -80,6 +80,19 @@ class CalibrationTest {
     }
 
     @Test
+    fun clippedSignalIsFlagged() {
+        // E.g. a 114 dB calibrator on a phone with CDD sensitivity (full scale ≈ 109 dB SPL).
+        val clippedTone = TestSignals.sine(1000.0, 1.5, 11.0).map { it.coerceIn(-1f, 1f) }.toFloatArray()
+        val r = measure(clippedTone, 10, true)
+        assertTrue(r.clippedFraction > 0.1, "clipped fraction ${r.clippedFraction}")
+        assertTrue(CalibrationWarning.CLIPPING in CalibrationMath.calibratorWarnings(r, 114.0))
+        assertTrue(CalibrationWarning.CLIPPING in CalibrationMath.referenceWarnings(r, 100.0))
+        val clean = measure(TestSignals.sine(1000.0, 0.5, 11.0), 10, true)
+        assertEquals(0.0, clean.clippedFraction, 0.0)
+        assertFalse(CalibrationWarning.CLIPPING in CalibrationMath.calibratorWarnings(clean, 94.0))
+    }
+
+    @Test
     fun implausibleOffsetIsFlagged() {
         assertFalse(CalibrationMath.implausible(Acoustics.DEFAULT_CALIBRATION_OFFSET_DB + 8))
         assertTrue(CalibrationMath.implausible(Acoustics.DEFAULT_CALIBRATION_OFFSET_DB - 25))

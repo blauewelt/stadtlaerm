@@ -88,12 +88,23 @@ class AudioCapture(
             encoding = if (encoding == AudioFormat.ENCODING_PCM_FLOAT) "PCM_FLOAT" else "PCM_16BIT",
             effects = fx,
         )
-        if (rec.sampleRate != Acoustics.SAMPLE_RATE) {
+        try {
+            if (rec.sampleRate != Acoustics.SAMPLE_RATE) {
+                throw IllegalStateException("Abtastrate ${rec.sampleRate} Hz statt 48 kHz")
+            }
+            rec.startRecording()
+            if (rec.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                throw IllegalStateException("Mikrofon ist belegt (Aufnahme startet nicht)")
+            }
+        } catch (e: Exception) {
+            // Release everything: the caller only keeps a reference after a successful start.
+            effects.forEach { try { it.release() } catch (_: Exception) {} }
+            effects.clear()
+            try { rec.stop() } catch (_: Exception) {}
             rec.release(); record = null
-            throw IllegalStateException("Abtastrate ${rec.sampleRate} Hz statt 48 kHz")
+            throw e
         }
         running = true
-        rec.startRecording()
         val isFloat = encoding == AudioFormat.ENCODING_PCM_FLOAT
         thread = Thread({ loop(rec, isFloat) }, "stadtlaerm-capture").apply { start() }
         return info

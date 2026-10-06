@@ -101,6 +101,7 @@ class CalibrationMeasurement(
     private var measured = 0L
     private var sumA = 0.0
     private var sumZ = 0.0
+    private var clipped = 0L
     private var secSumA = 0.0
     private var secCount = 0
     private val secondLevels = ArrayList<Double>()
@@ -123,6 +124,7 @@ class CalibrationMeasurement(
             seen++
             if (seen <= settleSamples || isComplete) continue
             sumA += a * a; sumZ += x * x; measured++
+            if (abs(x) >= CalibrationMath.CLIP_LEVEL) clipped++
             secSumA += a * a; secCount++
             if (secCount == sampleRate) {
                 secondLevels.add(Acoustics.db(secSumA / secCount))
@@ -149,6 +151,7 @@ class CalibrationMeasurement(
             measuredSeconds = measured.toDouble() / sampleRate,
             toneFrequencyHz = if (freqs.isEmpty()) null else freqs[freqs.size / 2],
             tonality = if (tones.isEmpty()) null else tones.map { it.tonality }.average(),
+            clippedFraction = clipped.toDouble() / n,
         )
     }
 }
@@ -162,6 +165,8 @@ data class CalibrationResult(
     val measuredSeconds: Double,
     val toneFrequencyHz: Double?,
     val tonality: Double?,
+    /** Fraction of measured samples at or above [CalibrationMath.CLIP_LEVEL] (digital full scale). */
+    val clippedFraction: Double = 0.0,
 )
 
 enum class CalibrationWarning {
@@ -175,6 +180,11 @@ enum class CalibrationWarning {
     NOT_TONAL,
     /** Resulting offset deviates > 20 dB from the CDD default: probably a mistake. */
     IMPLAUSIBLE_OFFSET,
+    /**
+     * Signal reached digital full scale: the measured level is too low and the offset too high.
+     * With CDD sensitivity, full scale is ≈ 109 dB SPL, so e.g. a 114 dB calibrator clips.
+     */
+    CLIPPING,
 }
 
 object CalibrationMath {
@@ -184,6 +194,10 @@ object CalibrationMath {
     const val CALIBRATOR_FREQ_TOLERANCE = 0.05
     const val MIN_TONALITY = 0.8
     const val MAX_DEVIATION_FROM_DEFAULT_DB = 20.0
+    /** |sample| at or above this counts as clipped (−0.09 dBFS). */
+    const val CLIP_LEVEL = 0.99
+    /** More than this fraction of clipped samples invalidates a calibration measurement. */
+    const val MAX_CLIPPED_FRACTION = 1e-4
 
     /** Reference meter method: offset = reference reading − measured raw LAeq. */
     fun referenceOffset(referenceLaeqDb: Double, measuredRawLaeqDb: Double): Double =
@@ -204,6 +218,7 @@ object CalibrationMath {
     fun referenceWarnings(result: CalibrationResult, referenceLaeqDb: Double?): List<CalibrationWarning> {
         val w = ArrayList<CalibrationWarning>()
         if (result.stdDevDb > MAX_STD_DEV_DB) w += CalibrationWarning.UNSTEADY
+        if (result.clippedFraction > MAX_CLIPPED_FRACTION) w += CalibrationWarning.CLIPPING
         if (referenceLaeqDb != null) {
             if (referenceLaeqDb < MIN_REFERENCE_DB) w += CalibrationWarning.TOO_QUIET
             if (implausible(referenceOffset(referenceLaeqDb, result.rawLaeqDb))) w += CalibrationWarning.IMPLAUSIBLE_OFFSET
@@ -218,6 +233,7 @@ object CalibrationMath {
             w += CalibrationWarning.FREQUENCY_OFF
         }
         if ((result.tonality ?: 0.0) < MIN_TONALITY) w += CalibrationWarning.NOT_TONAL
+        if (result.clippedFraction > MAX_CLIPPED_FRACTION) w += CalibrationWarning.CLIPPING
         if (implausible(calibratorOffset(nominalDb, result.rawLaeqDb))) w += CalibrationWarning.IMPLAUSIBLE_OFFSET
         return w
     }

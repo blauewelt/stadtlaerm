@@ -46,6 +46,7 @@ fun warningText(w: CalibrationWarning): String = when (w) {
     CalibrationWarning.FREQUENCY_OFF -> "Dominante Frequenz ist nicht 1 kHz ± 5 %. Sitzt der Kalibrator richtig?"
     CalibrationWarning.NOT_TONAL -> "Signal ist kein sauberer Ton (Ankopplung prüfen, Umgebung leiser)."
     CalibrationWarning.IMPLAUSIBLE_OFFSET -> "Offset weicht > 20 dB vom Standard ab – vermutlich ein Fehler."
+    CalibrationWarning.CLIPPING -> "Signal übersteuert (digitaler Vollausschlag): gemessener Pegel zu tief, Offset unbrauchbar. Leiseres Signal verwenden (z. B. 94 statt 114 dB)."
 }
 
 fun methodName(m: String): String = when (m) {

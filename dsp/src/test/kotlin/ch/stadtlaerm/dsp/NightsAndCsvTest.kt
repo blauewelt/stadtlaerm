@@ -97,4 +97,37 @@ class NightsAndCsvTest {
         assertEquals(0.0, ClassifierPreprocessor.normalize(loud)) // never attenuates
         assertTrue(loud.contentEquals(copy))
     }
+
+    /** The classifier gain is applied to a copied window only and never reaches the levels. */
+    @Test
+    fun classifierNormalisationDoesNotAffectLevels() {
+        val signal = TestSignals.whiteNoise(3e-4, 70.0) // ≈ −70 dBFS: maximum classifier gain
+        fun run(takeWindows: Boolean): List<MinuteRecord> {
+            val minutes = ArrayList<MinuteRecord>()
+            val engine = MeasurementEngine(
+                EngineConfig(zone = zone), 1_700_000_000_000L, TestSignals.mapper(),
+                object : MeasurementEngine.Listener { override fun onMinute(minute: MinuteRecord) { minutes += minute } },
+            )
+            val window = FloatArray(ClassifierPreprocessor.YAMNET_INPUT_SAMPLES)
+            var p = 0
+            var gains = 0
+            while (p < signal.size) {
+                val n = minOf(6000, signal.size - p)
+                engine.process(signal.copyOfRange(p, p + n), n)
+                p += n
+                if (takeWindows && engine.classifierDue() && engine.copyClassifierWindow(window) > 0) {
+                    if (ClassifierPreprocessor.normalize(window) > 0.0) gains++
+                }
+            }
+            engine.stop()
+            if (takeWindows) assertTrue(gains > 30, "normalisation ran $gains times")
+            return minutes
+        }
+        val plain = run(false)
+        val withClassifierWindows = run(true)
+        assertTrue(plain.isNotEmpty())
+        assertEquals(plain.map { it.laeqDb }, withClassifierWindows.map { it.laeqDb })
+        assertEquals(plain.map { it.l90Db }, withClassifierWindows.map { it.l90Db })
+        assertEquals(plain.map { it.lafMaxDb }, withClassifierWindows.map { it.lafMaxDb })
+    }
 }
