@@ -9,7 +9,6 @@ import ch.stadtlaerm.app.container
 import ch.stadtlaerm.app.data.CalibrationEntity
 import ch.stadtlaerm.dsp.Acoustics
 import ch.stadtlaerm.dsp.calibration.CalibrationMath
-import ch.stadtlaerm.dsp.calibration.CalibrationMeasurement
 import ch.stadtlaerm.dsp.calibration.CalibrationResult
 import ch.stadtlaerm.dsp.calibration.CalibrationWarning
 import kotlinx.coroutines.Dispatchers
@@ -21,8 +20,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-
-enum class CalMode { REFERENCE, CALIBRATOR, NOISE_FLOOR }
 
 data class CalUiState(
     val running: CalMode? = null,
@@ -52,7 +49,7 @@ class CalibrationViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<CalUiState> = _state
 
     private var capture: AudioCapture? = null
-    private var measurement: CalibrationMeasurement? = null
+    private var run: CalibrationRun? = null
 
     private val activeOffset: Double get() = active.value?.offsetDb ?: Acoustics.DEFAULT_CALIBRATION_OFFSET_DB
 
@@ -70,13 +67,19 @@ class CalibrationViewModel(app: Application) : AndroidViewModel(app) {
             CalMode.CALIBRATOR -> 10
             CalMode.NOISE_FLOOR -> 20
         }
-        val m = CalibrationMeasurement(seconds, analyzeTone = mode == CalMode.CALIBRATOR)
-        measurement = m
-        _state.value = _state.value.copy(running = mode, progress = 0f, remainingSeconds = seconds, currentDb = null, message = null)
+        val r = CalibrationRun(mode, seconds)
+        val m = r.measurement
+        run = r
+        // A new run replaces the previous result of the same method: it cannot be saved anymore.
+        _state.value = when (mode) {
+            CalMode.REFERENCE -> _state.value.copy(referenceResult = null)
+            CalMode.CALIBRATOR -> _state.value.copy(calibratorResult = null)
+            CalMode.NOISE_FLOOR -> _state.value.copy(noiseFloorDb = null)
+        }.copy(running = mode, progress = 0f, remainingSeconds = seconds, currentDb = null, message = null)
         var lastPosted = -1
         val cap = AudioCapture(getApplication(), onBlock = { buf, n ->
             // Capture thread: feed the measurement, post progress about every second.
-            m.process(buf, n)
+            r.onBlock(buf, n)
             val elapsed = (m.progress * seconds).toInt()
             if (elapsed != lastPosted || m.isComplete) {
                 lastPosted = elapsed
@@ -89,8 +92,12 @@ class CalibrationViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 }
             }
-            if (m.isComplete) viewModelScope.launch { finish(mode) }
-        }, onError = { msg -> viewModelScope.launch { abort("Aufnahmefehler: $msg") } })
+            if (r.shouldStop) viewModelScope.launch { finish(mode) }
+        }, onError = { msg -> viewModelScope.launch { abort("Aufnahmefehler: $msg") } },
+            onSilenced = { silenced ->
+                r.onMicSilenced(silenced)
+                if (r.shouldStop) viewModelScope.launch { finish(mode) }
+            })
         try {
             c.calibrationActive.value = true
             cap.start(source)
@@ -115,20 +122,34 @@ class CalibrationViewModel(app: Application) : AndroidViewModel(app) {
         if (_state.value.running != mode || finishing) return
         finishing = true
         try { stopCapture() } finally { finishing = false }
-        val r = measurement?.result() ?: return
-        measurement = null
-        _state.value = when (mode) {
-            CalMode.REFERENCE -> _state.value.copy(running = null, referenceResult = r)
-            CalMode.CALIBRATOR -> _state.value.copy(running = null, calibratorResult = r)
-            CalMode.NOISE_FLOOR -> _state.value.copy(running = null, noiseFloorDb = r.rawLaeqDb + activeOffset)
+        val current = run ?: return
+        run = null
+        when (val outcome = current.outcome()) {
+            is CalibrationRun.Outcome.Aborted ->
+                _state.value = _state.value.copy(running = null, progress = 0f, message = outcome.reason)
+            is CalibrationRun.Outcome.Done -> {
+                val r = outcome.result
+                _state.value = when (mode) {
+                    CalMode.REFERENCE -> _state.value.copy(running = null, referenceResult = r)
+                    CalMode.CALIBRATOR -> _state.value.copy(running = null, calibratorResult = r)
+                    CalMode.NOISE_FLOOR -> _state.value.copy(running = null, noiseFloorDb = r.rawLaeqDb + activeOffset)
+                }
+            }
         }
+    }
+
+    /** Lifecycle ON_STOP of the screen: a calibration must not continue in the background. */
+    fun onAppStopped() {
+        val r = run ?: return
+        r.onAppStopped()
+        viewModelScope.launch { finish(r.mode) }
     }
 
     fun cancel() = viewModelScope.launch { abort(null) }
 
     private suspend fun abort(msg: String?) {
         stopCapture()
-        measurement = null
+        run = null
         _state.value = _state.value.copy(running = null, progress = 0f, message = msg)
     }
 

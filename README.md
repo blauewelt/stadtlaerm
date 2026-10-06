@@ -1,4 +1,4 @@
-# Stadtlärm — citizen noise measurement for Zürich (Android, v0.1)
+# Stadtlärm — citizen noise measurement for Zürich (Android, v0.1.1)
 
 Stadtlärm turns an Android phone into a night-time noise logger. It measures A-weighted
 sound levels the way a sound level meter does (IEC 61672-1 A-weighting, Fast time weighting),
@@ -23,7 +23,8 @@ The UI is German (Swiss spelling); the code and docs are English. License: Apach
 | L1, L10, L50, L90 | Level exceeded 1/10/50/90 % of the time, from the 480 LAF samples of the minute (so L10 > L90) |
 | Event | LAF > background + threshold (default 10 dB) for ≥ 0.5 s; ends below background + threshold − 3 dB. Background = L90 of LAF over the trailing 5 min, frozen at event start |
 | SEL (LAE) | Sound exposure level of the event, re 1 s: `10·log10(Σ 10^(Leq_tick/10)·0.125 s)` |
-| Night LAeq | Energy average of all minutes that start between 22:00 and 06:00 |
+| Valid time / coverage | Seconds of a minute with a real microphone signal. Time while Android silences the mic (phone call, voice assistant — the app then receives zeros) or while the input is digital silence, plus 0.5 s of filter recovery, is excluded from every level, percentile, event and the background |
+| Night LAeq | Energy average over the valid time of all minutes that start between 22:00 and 06:00 local time; minutes with < 50 % coverage are left out. The night is 8 h, or 7 h / 9 h on DST-change nights |
 
 Level = `10·log10(mean square) + calibration offset`. Without a calibration the app uses the
 Android CDD sensitivity guideline (90 dB SPL at 1 kHz → RMS 2500/32768, i.e. −22.35 dBFS),
@@ -63,10 +64,10 @@ so a better model can be swapped in without touching the measurement code.
 
 ## Install (sideload)
 
-1. Copy `dist/stadtlaerm-v0.1-debug.apk` to the phone (USB, cloud drive, e-mail to yourself).
+1. Copy `dist/stadtlaerm-v0.1.1-debug.apk` to the phone (USB, cloud drive, e-mail to yourself).
 2. Open it on the phone. Android asks to allow installing from that source (Files, Chrome, …):
    allow it once.
-3. Or with a computer: `adb install dist/stadtlaerm-v0.1-debug.apk`.
+3. Or with a computer: `adb install dist/stadtlaerm-v0.1.1-debug.apk`.
 4. Start Stadtlärm and allow **microphone** and **notifications** when asked.
 
 Requirements: Android 8.0 (API 26) or newer. Tested only by build and unit tests so far — see
@@ -169,15 +170,23 @@ share sheet. Column names are in the first row (`laeq_db`, `lafmax_db`, `share_l
   dominate.
 - **Duration of events** is measured on the Fast-weighted level, so it includes the decay tail
   (≈ 35 dB/s); a 2 s pass-by 25 dB above background is reported as ≈ 2.7 s.
-- **Timing**: timestamps are derived from the start time and the audio sample count; over a
-  night the audio clock may drift by a few seconds against wall time. Minutes close on the first
-  125 ms tick after the wall-clock minute boundary.
+- **Timing**: sample time is anchored to the wall clock when the first audio block arrives and
+  re-anchored once per minute if the audio clock has drifted by more than 0.5 s (the number of
+  corrections is stored per minute as `clock_corrections`). Timestamps are therefore accurate to
+  roughly the audio input latency (tens of ms) plus up to 0.5 s of drift. Minutes are aligned to
+  wall-clock minutes and close on the first 125 ms tick after the boundary.
+- **Silenced microphone**: on Android 10+ a phone call or voice assistant silences the app's
+  microphone. The app detects this (system callback plus a digital-silence check) and does not
+  evaluate that time; the Measure screen shows a notice, minutes store `valid_s`/`coverage`, and
+  calibrations in progress are aborted. Data recorded with v0.1 has no such check; on upgrade,
+  v0.1 minutes with an LAeq below 0 dB(A) are marked as invalid.
 - High frequencies: the digital A-filter matches IEC 61672-1 within ±0.23 dB from 20 Hz to
   10 kHz, but rolls off faster above (−1.3 dB at 12.5 kHz, −4.6 dB at 16 kHz vs nominal; still
   inside Class 1 tolerances).
-- Settings changes apply from the next start of a measurement.
+- Settings changes (including the classifier level adjustment) apply from the next start of a measurement.
+- Calibration must be done with the app in the foreground; leaving the app aborts the measurement.
 
-## Status of v0.1
+## Status of v0.1.1
 
 - Built and unit-tested on the JVM: all DSP (A-weighting, Fast weighting, levels, percentiles,
   events, resampler, category mapping, calibration math, night summaries, CSV).

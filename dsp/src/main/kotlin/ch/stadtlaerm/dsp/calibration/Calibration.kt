@@ -2,6 +2,7 @@ package ch.stadtlaerm.dsp.calibration
 
 import ch.stadtlaerm.dsp.AWeighting
 import ch.stadtlaerm.dsp.Acoustics
+import ch.stadtlaerm.dsp.SilenceDetector
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -111,6 +112,18 @@ class CalibrationMeasurement(
     private var framePos = 0
     private val tones = ArrayList<ToneAnalyzer.Tone>()
 
+    /**
+     * Set when the input contained digital silence (system-silenced microphone) or the platform
+     * reported silencing via [invalidate]. An invalidated measurement must be discarded.
+     */
+    @Volatile var invalidated: Boolean = false
+        private set
+
+    /** Marks the measurement unusable (mic silenced by the system, app went to the background, …). */
+    fun invalidate() {
+        invalidated = true
+    }
+
     val isComplete: Boolean get() = measured >= targetSamples
     val progress: Double get() = measured.toDouble() / targetSamples
 
@@ -118,6 +131,12 @@ class CalibrationMeasurement(
     val lastSecondRawDb: Double get() = secondLevels.lastOrNull() ?: Double.NaN
 
     fun process(block: FloatArray, count: Int = block.size) {
+        if (invalidated) return
+        // Some devices deliver zeros while the input starts up: only check after the settle time.
+        if (seen >= settleSamples && !isComplete && SilenceDetector.isDigitalSilence(block, count)) {
+            invalidated = true
+            return
+        }
         for (i in 0 until count) {
             val x = block[i].toDouble()
             val a = aw.process(x)

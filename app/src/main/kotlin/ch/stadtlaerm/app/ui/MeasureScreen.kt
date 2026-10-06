@@ -72,6 +72,19 @@ fun MeasureScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        if (live.running && (live.micSilenced || live.invalidAudio)) {
+            item {
+                SectionCard {
+                    Text(
+                        if (live.micSilenced) "Mikrofon vom System stummgeschaltet (Anruf oder Sprachassistent)."
+                        else "Kein gültiges Mikrofonsignal (digitale Stille).",
+                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text("Diese Zeit wird nicht gewertet: keine Pegel, keine Ereignisse.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
         item {
             SectionCard {
                 Text("Momentanpegel LAF", style = MaterialTheme.typography.labelLarge)
@@ -119,7 +132,10 @@ fun MeasureScreen(modifier: Modifier = Modifier) {
                 StatRow("L10", "${Fmt.db(m?.l10Db)} dB(A)")
                 StatRow("L50", "${Fmt.db(m?.l50Db)} dB(A)")
                 StatRow("L90", "${Fmt.db(m?.l90Db)} dB(A)")
-                if (m != null) StatRow("Ereignisse", m.eventCount.toString())
+                if (m != null) {
+                    StatRow("Ereignisse", m.eventCount.toString())
+                    StatRow("Gültige Messzeit", "${Fmt.db(m.validSeconds, 0)} s (${Fmt.percent(m.coverage)})")
+                }
             }
         }
 

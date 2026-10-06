@@ -86,10 +86,10 @@ class EventDetectorTest {
         val motorcycle = mapper.labels.indexOf("Motorcycle")
         val events = ArrayList<NoiseEvent>()
         val minutes = ArrayList<MinuteRecord>()
-        lateinit var engine: MeasurementEngine
-        engine = MeasurementEngine(
+        val clock = SimClock(start)
+        val engine = MeasurementEngine(
             EngineConfig(zone = zone, classifierEnabled = true, calibrationId = 7, audioSource = "UNPROCESSED"),
-            startEpochMs = start, mapper = mapper,
+            wallClock = clock::now, mapper = mapper,
             listener = object : MeasurementEngine.Listener {
                 override fun onEvent(event: NoiseEvent) { events += event }
                 override fun onMinute(minute: MinuteRecord) { minutes += minute }
@@ -101,6 +101,7 @@ class EventDetectorTest {
         while (p < signal.size) {
             val n = minOf(6000, signal.size - p)
             signal.copyInto(buf, 0, p, p + n)
+            clock.advance(n)
             engine.process(buf, n)
             p += n
             if (engine.classifierDue()) {

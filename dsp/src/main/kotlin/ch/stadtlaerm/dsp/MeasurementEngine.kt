@@ -6,6 +6,7 @@ import ch.stadtlaerm.dsp.classify.ClassifierFrame
 import ch.stadtlaerm.dsp.classify.ClassifierPreprocessor
 import ch.stadtlaerm.dsp.classify.LabelScore
 import java.time.ZoneId
+import kotlin.math.abs
 
 data class EngineConfig(
     val sampleRate: Int = Acoustics.SAMPLE_RATE,
@@ -20,14 +21,23 @@ data class EngineConfig(
     val backgroundWindowSeconds: Double = 300.0,
     val backgroundMinHistorySeconds: Double = 30.0,
     val classifierEnabled: Boolean = true,
-    val classifierIntervalSeconds: Double = 1.0,
-    /** Max time to wait for a classifier frame after an event ends before storing it anyway. */
+    /** Classify once per second by default (short motorbike pass-bys must be covered). */
+    val classifierIntervalSeconds: Double = DEFAULT_CLASSIFIER_INTERVAL_SECONDS,
+    /** Fallback only: max wait for a classifier frame after an event ends (normally ≤ 1 tick). */
     val eventClassificationTimeoutSeconds: Double = 3.0,
+    /** After silenced/invalid audio, this much further audio is also invalid (filter recovery). */
+    val invalidGuardSeconds: Double = 0.5,
+    /** Re-anchor the sample clock to the wall clock when they differ by more than this. */
+    val maxClockDriftMs: Long = 500,
     val zone: ZoneId = ZoneId.systemDefault(),
 ) {
     init {
         require(sampleRate % 8 == 0) { "sample rate must be divisible by 8 (125 ms ticks)" }
         require(sampleRate % 3 == 0) { "sample rate must be divisible by 3 (classifier decimation)" }
+    }
+
+    companion object {
+        const val DEFAULT_CLASSIFIER_INTERVAL_SECONDS = 1.0
     }
 }
 
@@ -38,19 +48,32 @@ data class EngineConfig(
  * Per sample: A-weighting → square → Fast (125 ms) exponential averaging; Z (unweighted)
  * mean square for diagnostics; the unweighted signal also goes through the anti-aliasing
  * decimator into a 1 s, 16 kHz ring buffer for the classifier.
- * Every 125 ms ("tick"): LAF sample, event detection. Every second: LAeq,1s, LAFmax,1s, background.
- * At each wall-clock minute boundary: a [MinuteRecord].
+ * Every 125 ms ("tick"): validity check, LAF sample, event detection. Every second: LAeq,1s,
+ * LAFmax,1s, background. At each wall-clock minute boundary: a [MinuteRecord].
+ *
+ * **Validity.** A tick is invalid while the microphone is silenced by the system
+ * ([setMicSilenced], from Android's recording callback) or when it contains digital silence
+ * ([SilenceDetector]); the following [EngineConfig.invalidGuardSeconds] are invalid too, while
+ * the filters recover. Invalid ticks are excluded from LAeq, LAF statistics, percentiles, the
+ * event background and event detection (a running event is closed), and classifier windows that
+ * overlap them are ignored. Minutes record how many seconds were valid.
+ *
+ * **Time.** Sample time is anchored to [wallClock] when the first audio block is delivered, and
+ * once per minute re-anchored if the sample clock has drifted from the wall clock by more than
+ * [EngineConfig.maxClockDriftMs]. The drift estimate is the minimum over the minute of
+ * (wall time at block delivery − sample time of block end), which removes scheduling latency.
+ * Minute boundaries stay aligned to wall-clock minutes.
  *
  * Privacy: the only audio held is the decimator history (241 samples) and the 1 s classifier
  * ring buffer. Nothing here writes audio anywhere.
  *
- * Not thread-safe: call all methods from the capture thread.
+ * Not thread-safe except for [setMicSilenced]: call everything else from the capture thread.
  */
 class MeasurementEngine(
     val config: EngineConfig,
-    private val startEpochMs: Long,
     private val mapper: CategoryMapper?,
     private val listener: Listener,
+    private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
     interface Listener {
         fun onTick(tick: LafTick) {}
@@ -58,12 +81,15 @@ class MeasurementEngine(
         fun onMinute(minute: MinuteRecord) {}
         fun onEvent(event: NoiseEvent) {}
         fun onClassification(endEpochMs: Long, decision: CategoryDecision, top: List<LabelScore>) {}
+        /** The sample clock was re-anchored by [correctionMs] (wall − sample time). */
+        fun onClockCorrection(correctionMs: Long) {}
     }
 
     private val fs = config.sampleRate
     private val offset = config.calibrationOffsetDb
     private val tickLen = fs / 8
     private val warmupTicks = 4 // 0.5 s: lets the A-filter and the Fast integrator settle
+    private val guardSamples = (config.invalidGuardSeconds * fs).toLong()
 
     private val aWeighting = AWeighting(fs)
     private val fast = ExponentialTimeWeighting(ExponentialTimeWeighting.FAST_TAU, fs)
@@ -74,10 +100,26 @@ class MeasurementEngine(
     private val classifierActive = config.classifierEnabled && mapper != null
     private val classifierIntervalSamples = (config.classifierIntervalSeconds * fs).toLong()
     private var lastClassifierSample = Long.MIN_VALUE / 2
+    private var forceClassification = false
 
     var totalSamples = 0L
         private set
     private var tickCount = 0L
+
+    // Clock
+    private var anchored = false
+    private var anchorSample = 0L
+    private var anchorMs = 0L
+    private var minDriftMs = Long.MAX_VALUE
+
+    // Validity
+    @Volatile private var micSilenced = false
+    private var silencedSeenInTick = false
+    private var zeroRun = 0
+    private var tickMaxZeroRun = 0
+    private var guardUntilSample = Long.MIN_VALUE
+    /** Recent invalid intervals [start, end) in samples, oldest first (pruned to ~10 s). */
+    private val invalidIntervals = ArrayDeque<LongArray>()
 
     // Tick accumulators
     private var tickPos = 0
@@ -85,11 +127,11 @@ class MeasurementEngine(
     private var tickSumZ = 0.0
     private var tickMaxY = 0.0
 
-    // Second accumulators
+    // Second accumulators (valid ticks only, except the tick counter)
     private var secTicks = 0
+    private var secValidTicks = 0
     private var secSumA = 0.0
     private var secSumZ = 0.0
-    private var secSamples = 0L
     private var secMaxY = 0.0
     private val last60s = DoubleRing(60)
 
@@ -98,14 +140,22 @@ class MeasurementEngine(
     private var nextMinuteBoundaryMs = 0L
     private var minuteSumA = 0.0
     private var minuteSamples = 0L
+    private var minuteValidTicks = 0
     private var minuteMaxY = 0.0
     private var minuteLafs = DoubleArray(1024)
     private var minuteLafCount = 0
     private var minuteEvents = 0
+    private var minuteClockCorrections = 0
     private val bucketIds: List<String> = mapper?.bucketIds ?: emptyList()
     private val minuteBucketCounts = IntArray(bucketIds.size)
     private var minuteFrames = 0
     private var recording = false
+
+    /**
+     * A closed minute whose last seconds contained a still-unconfirmed event candidate: it is
+     * emitted once the candidate is confirmed (and counted here, where it started) or discarded.
+     */
+    private var heldMinute: MinuteRecord? = null
 
     private val background = BackgroundEstimator(
         config.backgroundWindowSeconds, config.backgroundMinHistorySeconds, 0.125,
@@ -135,29 +185,68 @@ class MeasurementEngine(
             }
 
             override fun onConfirmed(startSample: Long) {
-                if (recording) minuteEvents++
+                val held = heldMinute
+                if (held != null) {
+                    // A minute is only held for the candidate that started in it: count it there.
+                    heldMinute = null
+                    listener.onMinute(held.copy(eventCount = held.eventCount + 1))
+                } else if (recording) {
+                    minuteEvents++
+                }
             }
 
             override fun onDiscarded(startSample: Long) {
                 activeAcc = null
+                releaseHeldMinute()
             }
 
             override fun onClosed(event: DetectedEvent) {
                 val acc = activeAcc ?: EventAcc(event.startSample, labelCount)
                 activeAcc = null
                 acc.detected = event
-                pending.add(acc)
-                if (!classifierActive) finalizePending(force = true)
+                if (!classifierActive || acc.frames > 0) {
+                    // Classifier results overlapping the event are already attached: emit now.
+                    emitEvent(acc)
+                } else {
+                    // None overlapped (short event between two classifications): request one
+                    // classification right now, which covers the last 0.975 s of the event.
+                    pending.add(acc)
+                    forceClassification = true
+                }
             }
         },
     )
 
-    fun epochMsAt(sample: Long): Long = startEpochMs + sample * 1000L / fs
+    /** Wall-clock time (epoch ms) of input sample index [sample]. */
+    fun epochMsAt(sample: Long): Long = anchorMs + Math.floorDiv((sample - anchorSample) * 1000L, fs.toLong())
 
-    /** Feeds [count] samples of [block]. */
+    /** Called by the platform when the system silences / un-silences this app's microphone. */
+    fun setMicSilenced(silenced: Boolean) {
+        micSilenced = silenced
+    }
+
+    /** Feeds [count] samples of [block]; [wallClock] is read once, as the block's delivery time. */
     fun process(block: FloatArray, count: Int = block.size) {
+        val deliveredMs = wallClock()
+        val blockEnd = totalSamples + count
+        if (!anchored) {
+            anchored = true
+            anchorSample = blockEnd
+            anchorMs = deliveredMs
+        }
+        val drift = deliveredMs - epochMsAt(blockEnd)
+        if (drift < minDriftMs) minDriftMs = drift
+        if (micSilenced) silencedSeenInTick = true
+
         for (i in 0 until count) {
-            val x = block[i].toDouble()
+            val xf = block[i]
+            if (xf == 0f) {
+                zeroRun++
+                if (zeroRun > tickMaxZeroRun) tickMaxZeroRun = zeroRun
+            } else {
+                zeroRun = 0
+            }
+            val x = xf.toDouble()
             val a = aWeighting.process(x)
             val a2 = a * a
             tickSumA += a2
@@ -166,14 +255,40 @@ class MeasurementEngine(
             if (y > tickMaxY) tickMaxY = y
             tickPos++
             totalSamples++
-            if (tickPos == tickLen) endTick()
+            if (tickPos == tickLen) {
+                endTick()
+                if (micSilenced) silencedSeenInTick = true
+            }
         }
         if (classifierActive) decimator.process(block, count, classifierRing)
     }
 
     private fun resetTick() {
         tickPos = 0; tickSumA = 0.0; tickSumZ = 0.0; tickMaxY = 0.0
+        tickMaxZeroRun = zeroRun // a zero run continuing from the previous tick still counts
+        silencedSeenInTick = false
     }
+
+    private fun tickIsInvalid(endSample: Long): Boolean {
+        val digitalSilence = tickMaxZeroRun >= SilenceDetector.ZERO_RUN_SAMPLES ||
+            tickSumZ / tickLen < SilenceDetector.FLOOR_MEAN_SQUARE
+        val start = endSample - tickLen
+        if (silencedSeenInTick || micSilenced || digitalSilence) {
+            guardUntilSample = endSample + guardSamples
+            addInvalid(start, guardUntilSample)
+            return true
+        }
+        return endSample <= guardUntilSample
+    }
+
+    private fun addInvalid(start: Long, end: Long) {
+        val last = invalidIntervals.lastOrNull()
+        if (last != null && start <= last[1]) last[1] = maxOf(last[1], end) else invalidIntervals.addLast(longArrayOf(start, end))
+        while (invalidIntervals.size > 1 && invalidIntervals.first()[1] < totalSamples - 10L * fs) invalidIntervals.removeFirst()
+    }
+
+    private fun overlapsInvalid(start: Long, end: Long): Boolean =
+        invalidIntervals.any { it[0] < end && start < it[1] }
 
     private fun endTick() {
         tickCount++
@@ -187,20 +302,26 @@ class MeasurementEngine(
         val laf = Acoustics.db(fast.value, offset)
         val lafMaxTick = Acoustics.db(tickMaxY, offset)
         val leqTick = Acoustics.db(tickSumA / tickLen, offset)
-
-        secSumA += tickSumA; secSumZ += tickSumZ; secSamples += tickLen
-        if (tickMaxY > secMaxY) secMaxY = tickMaxY
-        minuteSumA += tickSumA; minuteSamples += tickLen
-        if (tickMaxY > minuteMaxY) minuteMaxY = tickMaxY
-        if (minuteLafCount == minuteLafs.size) minuteLafs = minuteLafs.copyOf(minuteLafs.size * 2)
-        minuteLafs[minuteLafCount++] = laf
-
-        background.add(laf)
-        detector.onTick(endSample, laf, lafMaxTick, leqTick)
-        listener.onTick(LafTick(endSample, nowMs, laf, lafMaxTick, leqTick))
-        resetTick()
+        val valid = !tickIsInvalid(endSample)
 
         secTicks++
+        minuteSamples += tickLen
+        if (valid) {
+            secValidTicks++
+            secSumA += tickSumA; secSumZ += tickSumZ
+            if (tickMaxY > secMaxY) secMaxY = tickMaxY
+            minuteSumA += tickSumA; minuteValidTicks++
+            if (tickMaxY > minuteMaxY) minuteMaxY = tickMaxY
+            if (minuteLafCount == minuteLafs.size) minuteLafs = minuteLafs.copyOf(minuteLafs.size * 2)
+            minuteLafs[minuteLafCount++] = laf
+            background.add(laf)
+            detector.onTick(endSample, laf, lafMaxTick, leqTick)
+        } else {
+            detector.interrupt(endSample - tickLen)
+        }
+        listener.onTick(LafTick(endSample, nowMs, laf, lafMaxTick, leqTick, valid))
+        resetTick()
+
         if (secTicks == 8) endSecond(endSample, nowMs)
         if (nowMs >= nextMinuteBoundaryMs) endMinute(nextMinuteBoundaryMs)
         finalizePending(force = false)
@@ -214,28 +335,38 @@ class MeasurementEngine(
     }
 
     private fun endSecond(endSample: Long, nowMs: Long) {
-        val msA = secSumA / secSamples
-        last60s.add(msA)
-        val running = last60s.toArray().average()
+        val validSamples = secValidTicks.toLong() * tickLen
+        val msA = if (validSamples > 0) secSumA / validSamples else Double.NaN
+        if (validSamples > 0) last60s.add(msA)
+        val running = if (last60s.size > 0) last60s.toArray().average() else Double.NaN
         val bg = background.l90()
         detector.backgroundDb = bg
         listener.onSecond(
             SecondResult(
                 endSample = endSample,
                 epochMs = nowMs,
-                laeqDb = Acoustics.db(msA, offset),
-                lafMaxDb = Acoustics.db(secMaxY, offset),
-                lzeqDb = Acoustics.db(secSumZ / secSamples, offset),
-                laeqRunning60sDb = Acoustics.db(running, offset),
+                laeqDb = if (validSamples > 0) Acoustics.db(msA, offset) else Double.NaN,
+                lafMaxDb = if (validSamples > 0) Acoustics.db(secMaxY, offset) else Double.NaN,
+                lzeqDb = if (validSamples > 0) Acoustics.db(secSumZ / validSamples, offset) else Double.NaN,
+                laeqRunning60sDb = if (running.isNaN()) Double.NaN else Acoustics.db(running, offset),
                 backgroundDb = bg,
+                validFraction = secValidTicks / 8.0,
             )
         )
-        secTicks = 0; secSumA = 0.0; secSumZ = 0.0; secSamples = 0; secMaxY = 0.0
+        secTicks = 0; secValidTicks = 0; secSumA = 0.0; secSumZ = 0.0; secMaxY = 0.0
+    }
+
+    private fun releaseHeldMinute() {
+        val held = heldMinute ?: return
+        heldMinute = null
+        listener.onMinute(held)
     }
 
     private fun endMinute(boundaryMs: Long) {
+        releaseHeldMinute()
         if (minuteSamples > 0) {
             val stats = Percentiles.stats(minuteLafs.copyOf(minuteLafCount))
+            val validSamples = minuteValidTicks.toLong() * tickLen
             val shares = LinkedHashMap<String, Double>()
             var dominant: String? = null
             if (classifierActive && minuteFrames > 0) {
@@ -245,45 +376,62 @@ class MeasurementEngine(
                     if (best < 0 || minuteBucketCounts[b] > minuteBucketCounts[best]) best = b
                 }
                 dominant = bucketIds[best]
-            } else if (classifierActive) {
-                dominant = null
             }
-            listener.onMinute(
-                MinuteRecord(
-                    startEpochMs = minuteStartMs,
-                    startIso = Iso.format(minuteStartMs, config.zone),
-                    durationSeconds = minuteSamples.toDouble() / fs,
-                    laeqDb = Acoustics.db(minuteSumA / minuteSamples, offset),
-                    lafMaxDb = Acoustics.db(minuteMaxY, offset),
-                    lafMinDb = stats.min,
-                    l1Db = stats.l1,
-                    l10Db = stats.l10,
-                    l50Db = stats.l50,
-                    l90Db = stats.l90,
-                    eventCount = minuteEvents,
-                    dominantCategory = dominant,
-                    categoryShares = shares,
-                    classifierFrames = minuteFrames,
-                    calibrationId = config.calibrationId,
-                    calibrationOffsetDb = offset,
-                    audioSource = config.audioSource,
-                    calibrated = config.calibrated,
-                )
+            val record = MinuteRecord(
+                startEpochMs = minuteStartMs,
+                startIso = Iso.format(minuteStartMs, config.zone),
+                durationSeconds = minuteSamples.toDouble() / fs,
+                laeqDb = if (validSamples > 0) Acoustics.db(minuteSumA / validSamples, offset) else Double.NaN,
+                lafMaxDb = if (validSamples > 0) Acoustics.db(minuteMaxY, offset) else Double.NaN,
+                lafMinDb = stats.min,
+                l1Db = stats.l1,
+                l10Db = stats.l10,
+                l50Db = stats.l50,
+                l90Db = stats.l90,
+                eventCount = minuteEvents,
+                dominantCategory = dominant,
+                categoryShares = shares,
+                classifierFrames = minuteFrames,
+                calibrationId = config.calibrationId,
+                calibrationOffsetDb = offset,
+                audioSource = config.audioSource,
+                calibrated = config.calibrated,
+                validSeconds = validSamples.toDouble() / fs,
+                clockCorrections = minuteClockCorrections,
             )
+            // An event that started in this minute but is not yet confirmed must be counted here.
+            if (recording && detector.isUnconfirmedCandidate) heldMinute = record else listener.onMinute(record)
         }
-        minuteStartMs = boundaryMs
-        nextMinuteBoundaryMs = boundaryMs + 60_000L
-        minuteSumA = 0.0; minuteSamples = 0; minuteMaxY = 0.0; minuteLafCount = 0; minuteEvents = 0
+        minuteSumA = 0.0; minuteSamples = 0; minuteValidTicks = 0; minuteMaxY = 0.0; minuteLafCount = 0
+        minuteEvents = 0; minuteClockCorrections = 0
         minuteBucketCounts.fill(0); minuteFrames = 0
+
+        checkClock()
+        // Align the next minute to the wall clock (also after a clock correction or a gap).
+        val nowMinute = Math.floorDiv(epochMsAt(totalSamples), 60_000L) * 60_000L
+        minuteStartMs = maxOf(nowMinute, boundaryMs)
+        nextMinuteBoundaryMs = minuteStartMs + 60_000L
+    }
+
+    /** Once per minute: re-anchor the sample clock if it drifted from the wall clock. */
+    private fun checkClock() {
+        val drift = minDriftMs
+        minDriftMs = Long.MAX_VALUE
+        if (drift == Long.MAX_VALUE || abs(drift) <= config.maxClockDriftMs) return
+        anchorMs += drift
+        minuteClockCorrections++
+        listener.onClockCorrection(drift)
     }
 
     // ---- Classifier interface -------------------------------------------------------------
 
     /** True when a new classifier window should be taken now. */
-    fun classifierDue(): Boolean =
-        classifierActive && recording &&
-            classifierRing.available >= ClassifierPreprocessor.YAMNET_INPUT_SAMPLES &&
-            totalSamples - lastClassifierSample >= classifierIntervalSamples
+    fun classifierDue(): Boolean {
+        if (!classifierActive || !recording) return false
+        if (classifierRing.available < ClassifierPreprocessor.YAMNET_INPUT_SAMPLES) return false
+        if (overlapsInvalid(totalSamples - classifierWindowSamples48k, totalSamples)) return false
+        return forceClassification || totalSamples - lastClassifierSample >= classifierIntervalSamples
+    }
 
     /**
      * Copies the latest 0.975 s of 16 kHz audio (unweighted, anti-aliased) into [dest].
@@ -292,6 +440,7 @@ class MeasurementEngine(
     fun copyClassifierWindow(dest: FloatArray): Long {
         if (!classifierRing.copyLatest(dest, ClassifierPreprocessor.YAMNET_INPUT_SAMPLES)) return -1
         lastClassifierSample = totalSamples
+        forceClassification = false
         return totalSamples
     }
 
@@ -300,6 +449,9 @@ class MeasurementEngine(
     /** Delivers a classifier result (from the inference thread, via the capture thread). */
     fun onClassifierFrame(frame: ClassifierFrame) {
         val m = mapper ?: return
+        val windowStart = frame.endSample - frame.windowSamples48k
+        // Windows touching silenced/invalid audio say nothing about the real sound: ignore them.
+        if (overlapsInvalid(windowStart, frame.endSample)) return
         val decision = m.decide(frame.scores)
         listener.onClassification(epochMsAt(frame.endSample), decision, m.topLabels(frame.scores, 3))
         if (recording) {
@@ -307,7 +459,6 @@ class MeasurementEngine(
             if (b >= 0) minuteBucketCounts[b]++
             minuteFrames++
         }
-        val windowStart = frame.endSample - frame.windowSamples48k
         val accs = ArrayList<EventAcc>(pending.size + 1)
         accs.addAll(pending)
         activeAcc?.let { accs.add(it) }
@@ -321,7 +472,7 @@ class MeasurementEngine(
         val it = pending.iterator()
         while (it.hasNext()) {
             val acc = it.next()
-            if (frame.endSample >= acc.detected!!.endSample) {
+            if (acc.frames > 0) {
                 it.remove()
                 emitEvent(acc)
             }
@@ -339,6 +490,7 @@ class MeasurementEngine(
                 emitEvent(acc)
             }
         }
+        if (pending.isEmpty()) forceClassification = false
     }
 
     private fun emitEvent(acc: EventAcc) {
@@ -382,7 +534,12 @@ class MeasurementEngine(
     fun stop() {
         detector.flush(totalSamples)
         finalizePending(force = true)
-        if (recording && minuteSamples >= fs) endMinute(nextMinuteBoundaryMs)
+        releaseHeldMinute()
+        if (recording && minuteSamples >= fs) {
+            recording = false // no held minute at stop
+            endMinute(nextMinuteBoundaryMs)
+        }
+        releaseHeldMinute()
         recording = false
         classifierRing.clear()
         decimator.reset()

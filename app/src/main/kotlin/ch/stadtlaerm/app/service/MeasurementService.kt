@@ -13,6 +13,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -38,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.update
 import java.time.ZoneId
 import java.util.Locale
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -65,6 +67,10 @@ data class LiveState(
     val topLabels: List<LabelScore> = emptyList(),
     val lastMinute: MinuteRecord? = null,
     val classifierEnabled: Boolean = false,
+    /** The system currently silences the microphone (call, voice assistant): audio not evaluated. */
+    val micSilenced: Boolean = false,
+    /** Current audio is not evaluated (silenced, digital silence or 0.5 s recovery after it). */
+    val invalidAudio: Boolean = false,
     val error: String? = null,
 )
 
@@ -78,6 +84,7 @@ class MeasurementService : Service() {
         const val ACTION_START = "ch.stadtlaerm.app.START"
         const val ACTION_STOP = "ch.stadtlaerm.app.STOP"
         private const val CHANNEL = "measurement"
+        private const val TAG = "MeasurementService"
         private const val NOTIFICATION_ID = 1
 
         fun start(context: Context) {
@@ -100,6 +107,7 @@ class MeasurementService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var lastNotificationMs = 0L
     @Volatile private var stopping = false
+    @Volatile private var normalizeClassifierInput = true
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -115,18 +123,20 @@ class MeasurementService : Service() {
         val live = container.live
         createChannel()
         val hasMic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        // startForeground() must be called for every startForegroundService() — also when a
-        // measurement is already running — otherwise the system kills the app.
-        try {
-            ServiceCompat.startForeground(
-                this, NOTIFICATION_ID, notification("Messung startet …"),
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0,
-            )
-        } catch (e: Exception) {
-            live.value = LiveState(error = "Vordergrunddienst nicht erlaubt: ${e.message}")
+        // startForeground() must succeed for every startForegroundService() — also when a
+        // measurement is already running or the permission is missing — otherwise the system
+        // kills the app. So promote first, and only then take any path that stops the service.
+        val promotion = promoteToForeground(hasMic)
+        if (promotion == Promotion.FAILED) {
+            live.value = live.value.copy(error = "Vordergrunddienst nicht erlaubt")
             stopSelf(); return
         }
         if (live.value.running || live.value.starting) return
+        if (promotion == Promotion.SHORT_SERVICE && hasMic) {
+            live.value = LiveState(error = "Mikrofon-Messung im Vordergrund nicht erlaubt – App öffnen und erneut starten")
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf(); return
+        }
         if (!hasMic) {
             live.value = LiveState(error = "Mikrofon-Berechtigung fehlt")
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -139,6 +149,7 @@ class MeasurementService : Service() {
             try {
                 val c = container
                 val settings = c.settings.state.value
+                normalizeClassifierInput = settings.classifierNormalize
                 val source = AudioSourceSelector.select(this@MeasurementService)
                 val cal = c.calibrations.active(source)
                 val mapper = if (settings.classifierEnabled) c.categoryMapper else null
@@ -156,7 +167,8 @@ class MeasurementService : Service() {
                     classifierIntervalSeconds = settings.classifierIntervalSeconds.toDouble(),
                     zone = ZoneId.systemDefault(),
                 )
-                val eng = MeasurementEngine(config, System.currentTimeMillis(), mapper, EngineListener())
+                // Sample time is anchored to the wall clock when the first audio block arrives.
+                val eng = MeasurementEngine(config, mapper, EngineListener())
                 // Stop may have been requested (notification "Stopp") while the model was loading.
                 // Commit the start atomically with respect to stopMeasurement(), so a stopped
                 // service never ends up with a running microphone, a held wake lock or a stale
@@ -168,11 +180,18 @@ class MeasurementService : Service() {
                     }
                     engine = eng
                     if (settings.wakeLock) acquireWakeLock()
-                    val cap = AudioCapture(this@MeasurementService, ::onBlock) { msg ->
-                        container.live.value = container.live.value.copy(error = "Aufnahmefehler: $msg")
-                        // Called on the capture thread: stop from another thread so join() can complete.
-                        scope.launch { stopMeasurement() }
-                    }
+                    val cap = AudioCapture(
+                        this@MeasurementService, ::onBlock,
+                        onError = { msg ->
+                            container.live.value = container.live.value.copy(error = "Aufnahmefehler: $msg")
+                            // Called on the capture thread: stop from another thread so join() can complete.
+                            scope.launch { stopMeasurement() }
+                        },
+                        onSilenced = { silenced ->
+                            eng.setMicSilenced(silenced)
+                            container.live.update { it.copy(micSilenced = silenced) }
+                        },
+                    )
                     val info = cap.start(source)
                     capture = cap
                     live.value = LiveState(
@@ -212,15 +231,16 @@ class MeasurementService : Service() {
     /** Runs on the capture thread for every 125 ms block. */
     private fun onBlock(samples: FloatArray, count: Int) {
         val eng = engine ?: return
-        eng.process(samples, count)
+        // Deliver finished classifications first, so an event ending in this block can use them.
         while (true) eng.onClassifierFrame(frames.poll() ?: break)
+        eng.process(samples, count)
         val cls = classifier ?: return
         val exec = inference ?: return
         if (eng.classifierDue() && inferenceBusy.compareAndSet(false, true)) {
             val end = eng.copyClassifierWindow(classifierWindow)
             if (end < 0) { inferenceBusy.set(false); return }
             val window = classifierWindow
-            val normalize = container.settings.state.value.classifierNormalize
+            val normalize = normalizeClassifierInput
             exec.execute {
                 try {
                     if (normalize) ClassifierPreprocessor.normalize(window)
@@ -238,40 +258,63 @@ class MeasurementService : Service() {
 
     private inner class EngineListener : MeasurementEngine.Listener {
         override fun onTick(tick: LafTick) {
-            val l = container.live
-            l.value = l.value.copy(lafDb = tick.lafDb)
+            container.live.update {
+                it.copy(lafDb = if (tick.valid) tick.lafDb else null, invalidAudio = !tick.valid)
+            }
         }
 
         override fun onSecond(second: SecondResult) {
             val l = container.live
-            l.value = l.value.copy(
-                laeq60sDb = second.laeqRunning60sDb,
-                backgroundDb = second.backgroundDb.takeUnless { it.isNaN() },
-            )
+            l.update {
+                it.copy(
+                    laeq60sDb = second.laeqRunning60sDb.takeUnless { v -> v.isNaN() },
+                    backgroundDb = second.backgroundDb.takeUnless { v -> v.isNaN() },
+                )
+            }
             val now = System.currentTimeMillis()
             if (now - lastNotificationMs >= 2000) {
                 lastNotificationMs = now
-                val text = String.format(Locale.GERMANY, "LAeq (1 min): %.1f dB(A)%s", second.laeqRunning60sDb,
-                    if (l.value.calibrated) "" else " · unkalibriert")
+                val text = if (l.value.micSilenced || second.validFraction == 0.0) {
+                    "Mikrofon vom System stummgeschaltet – Zeit wird nicht gewertet"
+                } else {
+                    String.format(Locale.GERMANY, "LAeq (1 min): %.1f dB(A)%s", second.laeqRunning60sDb,
+                        if (l.value.calibrated) "" else " · unkalibriert")
+                }
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text))
             }
         }
 
         override fun onMinute(minute: MinuteRecord) {
             val l = container.live
-            l.value = l.value.copy(lastMinute = minute)
-            scope.launch { container.measurements.insert(minute) }
+            l.update { it.copy(lastMinute = minute) }
+            scope.launch {
+                try {
+                    container.measurements.insert(minute)
+                } catch (e: Exception) {
+                    // Never log data, only the failure type.
+                    Log.w(TAG, "minute insert failed: ${e.javaClass.simpleName}")
+                }
+            }
         }
 
         override fun onEvent(event: NoiseEvent) {
-            scope.launch { container.measurements.insert(event) }
+            scope.launch {
+                try {
+                    container.measurements.insert(event)
+                } catch (e: Exception) {
+                    Log.w(TAG, "event insert failed: ${e.javaClass.simpleName}")
+                }
+            }
+        }
+
+        override fun onClockCorrection(correctionMs: Long) {
+            Log.i(TAG, "sample clock re-anchored by $correctionMs ms")
         }
 
         override fun onClassification(endEpochMs: Long, decision: CategoryDecision, top: List<LabelScore>) {
-            val l = container.live
-            l.value = l.value.copy(
-                dominantCategory = decision.dominant, dominantScore = decision.dominantScore, topLabels = top,
-            )
+            container.live.update {
+                it.copy(dominantCategory = decision.dominant, dominantScore = decision.dominantScore, topLabels = top)
+            }
         }
     }
 
@@ -295,6 +338,42 @@ class MeasurementService : Service() {
         container.live.value = LiveState(error = err, lastMinute = container.live.value.lastMinute)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    /**
+     * Promotes the service to the foreground. On API 34+ the "microphone" type requires the
+     * RECORD_AUDIO permission at this moment; if it is missing (revoked after the UI checked) or
+     * the type is refused, the service is promoted as a "shortService" instead (no permission
+     * needed) so that it can stop cleanly instead of crashing the app.
+     */
+    private enum class Promotion { MICROPHONE, SHORT_SERVICE, FAILED }
+
+    private fun promoteToForeground(hasMic: Boolean): Promotion {
+        val shortType = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE else 0
+        val micType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
+        val first = if (Build.VERSION.SDK_INT >= 34 && !hasMic) shortType else micType
+        val text = if (hasMic) "Messung startet …" else "Mikrofon-Berechtigung fehlt"
+        try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(text), first)
+            return if (first == micType) Promotion.MICROPHONE else Promotion.SHORT_SERVICE
+        } catch (e: Exception) {
+            Log.w(TAG, "startForeground failed: ${e.javaClass.simpleName}")
+        }
+        if (Build.VERSION.SDK_INT >= 34 && first != shortType) {
+            try {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(text), shortType)
+                // The caller stops right after: this promotion only exists to avoid a crash.
+                return Promotion.SHORT_SERVICE
+            } catch (e: Exception) {
+                Log.w(TAG, "startForeground(shortService) failed: ${e.javaClass.simpleName}")
+            }
+        }
+        return Promotion.FAILED
+    }
+
+    /** Short-service timeout (API 34+); only reached if the fallback promotion was used. */
+    override fun onTimeout(startId: Int) {
+        stopMeasurement()
     }
 
     override fun onDestroy() {

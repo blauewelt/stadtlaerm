@@ -32,13 +32,14 @@ data class MinuteEntity(
     val startEpochMs: Long,
     val startIso: String,
     val durationSeconds: Double,
-    val laeqDb: Double,
-    val lafMaxDb: Double,
-    val lafMinDb: Double,
-    val l1Db: Double,
-    val l10Db: Double,
-    val l50Db: Double,
-    val l90Db: Double,
+    /** Level fields are null when the minute had no valid audio (microphone silenced). */
+    val laeqDb: Double?,
+    val lafMaxDb: Double?,
+    val lafMinDb: Double?,
+    val l1Db: Double?,
+    val l10Db: Double?,
+    val l50Db: Double?,
+    val l90Db: Double?,
     val eventCount: Int,
     val dominantCategory: String?,
     /** JSON object bucket id → share. */
@@ -48,6 +49,11 @@ data class MinuteEntity(
     val calibrationOffsetDb: Double,
     val audioSource: String,
     val calibrated: Boolean,
+    /** Seconds of valid (not silenced) audio; levels refer to these only. */
+    val validSeconds: Double,
+    /** validSeconds / durationSeconds. */
+    val coverage: Double,
+    val clockCorrections: Int,
 )
 
 @Entity(tableName = "events", indices = [Index("startEpochMs")])
@@ -147,14 +153,16 @@ interface CalibrationDao {
     suspend fun all(): List<CalibrationEntity>
 }
 
-@Database(entities = [MinuteEntity::class, EventEntity::class, CalibrationEntity::class], version = 1, exportSchema = false)
+@Database(entities = [MinuteEntity::class, EventEntity::class, CalibrationEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun measurements(): MeasurementDao
     abstract fun calibrations(): CalibrationDao
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "stadtlaerm.db").build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "stadtlaerm.db")
+                .addMigrations(MIGRATION_1_2)
+                .build()
     }
 }
 
@@ -163,18 +171,25 @@ abstract class AppDatabase : RoomDatabase() {
 object Mappers {
     fun MinuteRecord.toEntity() = MinuteEntity(
         startEpochMs = startEpochMs, startIso = startIso, durationSeconds = durationSeconds,
-        laeqDb = laeqDb, lafMaxDb = lafMaxDb, lafMinDb = lafMinDb, l1Db = l1Db, l10Db = l10Db,
-        l50Db = l50Db, l90Db = l90Db, eventCount = eventCount, dominantCategory = dominantCategory,
+        laeqDb = laeqDb.orNull(), lafMaxDb = lafMaxDb.orNull(), lafMinDb = lafMinDb.orNull(), l1Db = l1Db.orNull(),
+        l10Db = l10Db.orNull(), l50Db = l50Db.orNull(), l90Db = l90Db.orNull(),
+        eventCount = eventCount, dominantCategory = dominantCategory,
         categorySharesJson = buildJsonObject { categoryShares.forEach { (k, v) -> put(k, v) } }.toString(),
         classifierFrames = classifierFrames, calibrationId = calibrationId,
         calibrationOffsetDb = calibrationOffsetDb, audioSource = audioSource, calibrated = calibrated,
+        validSeconds = validSeconds, coverage = coverage, clockCorrections = clockCorrections,
     )
 
+    private fun Double.orNull(): Double? = takeUnless { it.isNaN() || it.isInfinite() }
+    private fun Double?.orNaN(): Double = this ?: Double.NaN
+
     fun MinuteEntity.toRecord() = MinuteRecord(
-        startEpochMs, startIso, durationSeconds, laeqDb, lafMaxDb, lafMinDb, l1Db, l10Db, l50Db, l90Db,
+        startEpochMs, startIso, durationSeconds, laeqDb.orNaN(), lafMaxDb.orNaN(), lafMinDb.orNaN(),
+        l1Db.orNaN(), l10Db.orNaN(), l50Db.orNaN(), l90Db.orNaN(),
         eventCount, dominantCategory,
         Json.parseToJsonElement(categorySharesJson).jsonObject.mapValues { it.value.jsonPrimitive.double },
         classifierFrames, calibrationId, calibrationOffsetDb, audioSource, calibrated,
+        validSeconds = validSeconds, clockCorrections = clockCorrections,
     )
 
     fun NoiseEvent.toEntity() = EventEntity(

@@ -50,7 +50,7 @@ accordingly before you share them.
 
 ## How to verify
 
-- `aapt2 dump permissions stadtlaerm-v0.1-debug.apk` lists exactly: `RECORD_AUDIO`,
+- `aapt2 dump permissions stadtlaerm-v0.1.1-debug.apk` lists exactly: `RECORD_AUDIO`,
   `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `WAKE_LOCK`
   (plus AndroidX's internal `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`). No `INTERNET`.
 - Search the source: `grep -rn "FileOutputStream\|openFileOutput\|Socket\|HttpURLConnection" app dsp`

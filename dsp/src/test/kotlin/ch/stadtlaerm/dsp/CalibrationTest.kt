@@ -32,12 +32,14 @@ class CalibrationTest {
 
         // Applying the offset in the engine reproduces the meter reading.
         val seconds = ArrayList<SecondResult>()
+        val clock = SimClock(0L)
         val engine = MeasurementEngine(
             EngineConfig(calibrationOffsetDb = offset, calibrated = true, classifierEnabled = false),
-            0L, null,
+            null,
             object : MeasurementEngine.Listener { override fun onSecond(second: SecondResult) { seconds += second } },
+            clock::now,
         )
-        TestSignals.feed(engine, noise)
+        TestSignals.feed(engine, noise, clock = clock)
         val avg = Acoustics.energyAverage(seconds.drop(1).map { it.laeqDb }.toDoubleArray())
         assertEquals(65.0, avg, 0.1)
     }

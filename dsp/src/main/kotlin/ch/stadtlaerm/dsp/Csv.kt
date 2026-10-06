@@ -17,20 +17,21 @@ object Csv {
     fun minutes(records: List<MinuteRecord>, bucketIds: List<String>): String {
         val sb = StringBuilder()
         val header = listOf(
-            "start", "duration_s", "laeq_db", "lafmax_db", "lafmin_db", "l1_db", "l10_db", "l50_db", "l90_db",
+            "start", "duration_s", "valid_s", "coverage", "laeq_db", "lafmax_db", "lafmin_db", "l1_db", "l10_db", "l50_db", "l90_db",
             "event_count", "dominant_category",
         ) + bucketIds.map { "share_$it" } + listOf(
             "classifier_frames", "calibration_id", "calibration_offset_db", "audio_source", "calibrated",
+            "clock_corrections",
         )
         sb.append(header.joinToString(",")).append("\n")
         for (r in records) {
             val row = listOf(
-                field(r.startIso), num(r.durationSeconds, 1), num(r.laeqDb), num(r.lafMaxDb), num(r.lafMinDb),
+                field(r.startIso), num(r.durationSeconds, 1), num(r.validSeconds, 1), num(r.coverage, 3), num(r.laeqDb), num(r.lafMaxDb), num(r.lafMinDb),
                 num(r.l1Db), num(r.l10Db), num(r.l50Db), num(r.l90Db), r.eventCount.toString(),
                 field(r.dominantCategory),
             ) + bucketIds.map { id -> r.categoryShares[id]?.let { num(it, 3) } ?: "" } + listOf(
                 r.classifierFrames.toString(), r.calibrationId?.toString() ?: "", num(r.calibrationOffsetDb, 2),
-                field(r.audioSource), r.calibrated.toString(),
+                field(r.audioSource), r.calibrated.toString(), r.clockCorrections.toString(),
             )
             sb.append(row.joinToString(",")).append("\n")
         }

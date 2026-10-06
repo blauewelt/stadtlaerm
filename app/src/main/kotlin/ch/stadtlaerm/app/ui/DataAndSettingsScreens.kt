@@ -169,7 +169,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
             SwitchRow("Pegelanpassung für Klassifikator", s.classifierNormalize) { v -> c.settings.update { it.copy(classifierNormalize = v) } }
             Text(
-                "Leise Signale werden nur für die Erkennung verstärkt (bis +40 dB), weil das Modell auf lauten YouTube-Aufnahmen trainiert wurde. Pegelwerte sind davon nicht betroffen.",
+                "Ein: Jedes Erkennungsfenster (0.975 s) wird vor der Klassifikation auf einen RMS-Pegel von −30 dBFS angehoben – " +
+                    "höchstens um +40 dB, nie abgeschwächt, Spitzen auf ±1 begrenzt. Das hilft bei leisen Nachtgeräuschen, weil das Modell " +
+                    "auf lauten YouTube-Aufnahmen trainiert wurde, kann aber auch leises Rauschen als Geräusch erkennen lassen. " +
+                    "Aus: Das Modell sieht das unveränderte Signal. Pegel, Statistik und Ereignisse sind in beiden Fällen gleich. " +
+                    "Wirkt ab dem nächsten Start der Messung.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

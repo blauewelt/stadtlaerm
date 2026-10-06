@@ -13,8 +13,8 @@ android {
         applicationId = "ch.stadtlaerm.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
         ndk {
             // Phones (arm64/armv7) and the x86_64 emulator; 32-bit x86 dropped to keep the APK smaller.
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -75,4 +75,13 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     implementation("com.google.ai.edge.litert:litert:1.4.0")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation(kotlin("test"))
+    // JVM SQLite to check the Room migration SQL without a device.
+    testImplementation("org.xerial:sqlite-jdbc:3.46.1.3")
+}
+
+tasks.withType<Test>().configureEach {
+    systemProperty("stadtlaerm.generatedDb", layout.buildDirectory.dir("generated/ksp/debug/kotlin/ch/stadtlaerm/app/data").get().asFile.absolutePath)
 }

@@ -56,7 +56,8 @@ fun NightsScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
             )
             Text(
-                "Nachtzeit 22:00–06:00. Pegel energetisch gemittelt über die gemessenen Minuten.",
+                "Nachtzeit 22:00–06:00 (Ortszeit; bei Zeitumstellung 7 bzw. 9 h). Pegel energetisch gemittelt über die " +
+                    "gültige Messzeit; Minuten mit weniger als 50 % gültigem Signal (z. B. Mikrofon durch Anruf stummgeschaltet) werden nicht gewertet.",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
@@ -97,7 +98,10 @@ private fun NightCard(n: NightSummary) {
             }
         }
         StatRow("Nacht-LAeq", "${Fmt.db(n.laeqDb)} dB(A)" + if (n.allCalibrated) "" else " (unkalibriert)")
-        StatRow("Gemessen", "${Fmt.duration(n.measuredSeconds)} von ${Fmt.duration(n.nominalSeconds)}")
+        StatRow("Gültig gemessen", "${Fmt.duration(n.measuredSeconds)} von ${Fmt.duration(n.nominalSeconds)} (${Fmt.percent(n.coverage)})")
+        if (n.excludedMinutes > 0) {
+            StatRow("Nicht gewertete Minuten (< 50 % gültig)", n.excludedMinutes.toString())
+        }
         StatRow("Ereignisse", n.eventCount.toString())
         StatRow("davon ≥ Hintergrund + 15 dB", n.strongEventCount.toString())
         n.loudestEvent?.let { e ->

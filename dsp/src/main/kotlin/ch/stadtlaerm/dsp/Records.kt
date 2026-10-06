@@ -12,6 +12,8 @@ data class LafTick(
     val lafDb: Double,
     val lafMaxDb: Double,
     val leqDb: Double,
+    /** False while the microphone is silenced (or recovering from it); such ticks are not evaluated. */
+    val valid: Boolean = true,
 )
 
 /** Per-second result. */
@@ -26,9 +28,16 @@ data class SecondResult(
     val laeqRunning60sDb: Double,
     /** Current event background (L90 of trailing window), NaN until enough history. */
     val backgroundDb: Double,
+    /** Fraction of this second's 125 ms ticks that were valid (levels above use only those). */
+    val validFraction: Double = 1.0,
 )
 
-/** Per-minute aggregate — the main stored record. */
+/**
+ * Per-minute aggregate — the main stored record.
+ *
+ * All level fields are computed from valid audio only (see [validSeconds]); they are NaN when the
+ * minute contains no valid audio at all.
+ */
 data class MinuteRecord(
     val startEpochMs: Long,
     /** ISO-8601 with offset, e.g. 2026-10-06T22:01:00+02:00. */
@@ -51,7 +60,18 @@ data class MinuteRecord(
     val calibrationOffsetDb: Double,
     val audioSource: String,
     val calibrated: Boolean,
-)
+    /**
+     * Seconds of valid audio in this minute. Time during which the microphone was silenced by the
+     * system (call, voice assistant) or delivered digital silence — plus a 0.5 s recovery guard —
+     * is excluded from every level, percentile, event and the background.
+     */
+    val validSeconds: Double = durationSeconds,
+    /** Number of times the sample clock was re-anchored to the wall clock in this minute. */
+    val clockCorrections: Int = 0,
+) {
+    /** Fraction of the minute's duration with valid audio (0…1). */
+    val coverage: Double get() = if (durationSeconds > 0) (validSeconds / durationSeconds).coerceIn(0.0, 1.0) else 0.0
+}
 
 /** A detected noise event with its classification. */
 data class NoiseEvent(

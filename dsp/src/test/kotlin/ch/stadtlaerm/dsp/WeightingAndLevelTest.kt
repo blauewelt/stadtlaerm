@@ -69,15 +69,16 @@ class WeightingAndLevelTest {
         // Through the full engine: per-second LAeq and minute LAeq.
         val seconds = ArrayList<SecondResult>()
         val minutes = ArrayList<MinuteRecord>()
+        val clock = SimClock(1_700_000_000_000L)
         val engine = MeasurementEngine(
             EngineConfig(calibrationOffsetDb = offset, classifierEnabled = false),
-            startEpochMs = 1_700_000_000_000L, mapper = null,
+            wallClock = clock::now, mapper = null,
             listener = object : MeasurementEngine.Listener {
                 override fun onSecond(second: SecondResult) { seconds += second }
                 override fun onMinute(minute: MinuteRecord) { minutes += minute }
             },
         )
-        TestSignals.feed(engine, TestSignals.sine(1000.0, amplitude, 10.0))
+        TestSignals.feed(engine, TestSignals.sine(1000.0, amplitude, 10.0), clock = clock)
         engine.stop()
         assertTrue(seconds.size >= 9)
         for (sr in seconds.drop(1)) assertEquals(expected, sr.laeqDb, 0.02)

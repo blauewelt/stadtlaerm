@@ -5,14 +5,18 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
+import android.os.Build
 import android.os.Process
 import android.util.Log
 import ch.stadtlaerm.dsp.Acoustics
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /** Which microphone path is used. Calibration is stored per source. */
 object AudioSourceSelector {
@@ -59,6 +63,12 @@ class AudioCapture(
     private val context: Context,
     private val onBlock: (samples: FloatArray, count: Int) -> Unit,
     private val onError: (String) -> Unit = {},
+    /**
+     * Called (on an arbitrary thread) when Android silences or un-silences this capture, e.g.
+     * while a phone call or a voice assistant owns the microphone (API 29+). While silenced the
+     * app receives zeros; callers must not evaluate that audio.
+     */
+    private val onSilenced: (Boolean) -> Unit = {},
 ) {
     companion object {
         private const val TAG = "AudioCapture"
@@ -69,6 +79,9 @@ class AudioCapture(
     private var thread: Thread? = null
     private var record: AudioRecord? = null
     private val effects = ArrayList<AudioEffect>()
+    private var recordingCallback: AudioManager.AudioRecordingCallback? = null
+    private var callbackExecutor: ExecutorService? = null
+    @Volatile private var lastSilenced = false
 
     @SuppressLint("MissingPermission") // checked by the caller before starting
     fun start(sourceName: String): CaptureInfo {
@@ -105,9 +118,37 @@ class AudioCapture(
             throw e
         }
         running = true
+        registerSilencingCallback(rec)
         val isFloat = encoding == AudioFormat.ENCODING_PCM_FLOAT
         thread = Thread({ loop(rec, isFloat) }, "stadtlaerm-capture").apply { start() }
         return info
+    }
+
+    /** API 29+: follow AudioRecordingConfiguration.isClientSilenced for this AudioRecord. */
+    private fun registerSilencingCallback(rec: AudioRecord) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val cb = object : AudioManager.AudioRecordingCallback() {
+            override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) {
+                val cfg = try { rec.activeRecordingConfiguration } catch (_: Exception) { null }
+                    ?: configs?.firstOrNull { it.clientAudioSessionId == rec.audioSessionId }
+                    ?: return
+                val silenced = cfg.isClientSilenced
+                if (silenced != lastSilenced) {
+                    lastSilenced = silenced
+                    onSilenced(silenced)
+                }
+            }
+        }
+        try {
+            val exec = Executors.newSingleThreadExecutor { r -> Thread(r, "stadtlaerm-silence") }
+            callbackExecutor = exec
+            rec.registerAudioRecordingCallback(exec, cb)
+            recordingCallback = cb
+            // Initial state (the mic may already be taken when we start).
+            rec.activeRecordingConfiguration?.let { if (it.isClientSilenced) { lastSilenced = true; onSilenced(true) } }
+        } catch (e: Exception) {
+            Log.w(TAG, "recording callback unavailable: ${e.javaClass.simpleName}")
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -185,6 +226,14 @@ class AudioCapture(
 
     fun stop() {
         running = false
+        val cb = recordingCallback
+        recordingCallback = null
+        if (cb != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try { record?.unregisterAudioRecordingCallback(cb) } catch (_: Exception) {}
+        }
+        callbackExecutor?.shutdown()
+        callbackExecutor = null
+        lastSilenced = false
         try { record?.stop() } catch (_: Exception) {}
         thread?.join(2000)
         thread = null

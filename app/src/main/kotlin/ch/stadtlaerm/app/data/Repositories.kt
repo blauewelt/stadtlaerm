@@ -20,10 +20,13 @@ import kotlinx.serialization.json.put
 import java.io.File
 import java.time.ZoneId
 
+private val DEFAULT_INTERVAL_S: Int = ch.stadtlaerm.dsp.EngineConfig.DEFAULT_CLASSIFIER_INTERVAL_SECONDS.toInt()
+
 data class AppSettings(
     val eventThresholdDb: Double = 10.0,
     val classifierEnabled: Boolean = true,
-    val classifierIntervalSeconds: Int = 1,
+    /** Once per second by default (EngineConfig.DEFAULT_CLASSIFIER_INTERVAL_SECONDS). */
+    val classifierIntervalSeconds: Int = DEFAULT_INTERVAL_S,
     val classifierNormalize: Boolean = true,
     val wakeLock: Boolean = true,
 )
@@ -37,7 +40,7 @@ class SettingsStore(context: Context) {
     private fun read() = AppSettings(
         eventThresholdDb = prefs.getFloat("event_threshold_db", 10f).toDouble(),
         classifierEnabled = prefs.getBoolean("classifier_enabled", true),
-        classifierIntervalSeconds = prefs.getInt("classifier_interval_s", 1),
+        classifierIntervalSeconds = prefs.getInt("classifier_interval_s", DEFAULT_INTERVAL_S),
         classifierNormalize = prefs.getBoolean("classifier_normalize", true),
         wakeLock = prefs.getBoolean("wake_lock", true),
     )

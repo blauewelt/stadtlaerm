@@ -82,6 +82,16 @@ class EventDetector(
 
     val isActive: Boolean get() = active
     val activeStartSample: Long? get() = if (active) startSample else null
+    /** A candidate that has not (yet) reached the minimum duration. */
+    val isUnconfirmedCandidate: Boolean get() = active && !confirmed
+
+    /**
+     * Ends a running event at [endSample] because the following audio is invalid (e.g. the
+     * microphone was silenced). Confirmed events are reported, unconfirmed candidates discarded.
+     */
+    fun interrupt(endSample: Long) {
+        if (active) close(endSample)
+    }
 
     /**
      * @param tickEndSample sample index at the end of this tick

@@ -34,15 +34,31 @@ object TestSignals {
 
     fun mapper(): CategoryMapper = CategoryMapper.fromJson(File(assetsDir(), "categories.json").readText(), labels())
 
-    /** Feeds a signal to the engine in realistic 125 ms blocks. */
-    fun feed(engine: MeasurementEngine, signal: FloatArray, block: Int = 6000) {
+    /** Feeds a signal to the engine in realistic 125 ms blocks, advancing [clock] per block. */
+    fun feed(engine: MeasurementEngine, signal: FloatArray, block: Int = 6000, clock: SimClock? = null) {
         var p = 0
         val buf = FloatArray(block)
         while (p < signal.size) {
             val n = minOf(block, signal.size - p)
             signal.copyInto(buf, 0, p, p + n)
+            clock?.advance(n)
             engine.process(buf, n)
             p += n
         }
     }
+}
+
+/**
+ * Simulated wall clock: the time at which a block is delivered = start + samples delivered so far
+ * (including that block), optionally running at [rate] relative to the audio clock.
+ */
+class SimClock(private val startMs: Long, var rate: Double = 1.0, private val fs: Int = Acoustics.SAMPLE_RATE) {
+    private var elapsedMs = 0.0
+    var extraMs = 0L
+
+    fun advance(samples: Int) {
+        elapsedMs += samples * 1000.0 / fs * rate
+    }
+
+    fun now(): Long = startMs + Math.round(elapsedMs) + extraMs
 }

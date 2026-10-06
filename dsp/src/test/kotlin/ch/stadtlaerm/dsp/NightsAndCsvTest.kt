@@ -77,11 +77,12 @@ class NightsAndCsvTest {
         assertTrue(csv[1].startsWith("2026-10-02T23:10:00.000+02:00,2.000,80.0,81.0,50.0,10.0,road_traffic"), csv[1])
         val mcsv = Csv.minutes(listOf(minute(t, 55.0)), listOf("road_traffic", "unclassified")).lines()
         assertEquals(
-            "start,duration_s,laeq_db,lafmax_db,lafmin_db,l1_db,l10_db,l50_db,l90_db,event_count,dominant_category," +
-                "share_road_traffic,share_unclassified,classifier_frames,calibration_id,calibration_offset_db,audio_source,calibrated",
+            "start,duration_s,valid_s,coverage,laeq_db,lafmax_db,lafmin_db,l1_db,l10_db,l50_db,l90_db,event_count,dominant_category," +
+                "share_road_traffic,share_unclassified,classifier_frames,calibration_id,calibration_offset_db,audio_source,calibrated," +
+                "clock_corrections",
             mcsv[0],
         )
-        assertEquals("2026-10-02T23:10:00+02:00,60.0,55.0,60.0,50.0,59.0,57.0,55.0,53.0,0,road_traffic,1.000,,60,1,110.00,UNPROCESSED,true", mcsv[1])
+        assertEquals("2026-10-02T23:10:00+02:00,60.0,60.0,1.000,55.0,60.0,50.0,59.0,57.0,55.0,53.0,0,road_traffic,1.000,,60,1,110.00,UNPROCESSED,true,0", mcsv[1])
     }
 
     @Test
@@ -104,15 +105,18 @@ class NightsAndCsvTest {
         val signal = TestSignals.whiteNoise(3e-4, 70.0) // ≈ −70 dBFS: maximum classifier gain
         fun run(takeWindows: Boolean): List<MinuteRecord> {
             val minutes = ArrayList<MinuteRecord>()
+            val clock = SimClock(1_700_000_000_000L)
             val engine = MeasurementEngine(
-                EngineConfig(zone = zone), 1_700_000_000_000L, TestSignals.mapper(),
+                EngineConfig(zone = zone), TestSignals.mapper(),
                 object : MeasurementEngine.Listener { override fun onMinute(minute: MinuteRecord) { minutes += minute } },
+                clock::now,
             )
             val window = FloatArray(ClassifierPreprocessor.YAMNET_INPUT_SAMPLES)
             var p = 0
             var gains = 0
             while (p < signal.size) {
                 val n = minOf(6000, signal.size - p)
+                clock.advance(n)
                 engine.process(signal.copyOfRange(p, p + n), n)
                 p += n
                 if (takeWindows && engine.classifierDue() && engine.copyClassifierWindow(window) > 0) {

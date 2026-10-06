@@ -41,7 +41,7 @@
         <service
             android:name=".service.MeasurementService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="microphone|shortService" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

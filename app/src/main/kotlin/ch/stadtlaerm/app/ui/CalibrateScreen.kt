@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ch.stadtlaerm.app.audio.AudioSourceSelector
@@ -70,6 +74,13 @@ fun CalibrateScreen(modifier: Modifier = Modifier, vm: CalibrationViewModel = vi
         if (hasMicPermission(context)) vm.start(mode) else { pendingMode = mode; requestPermission() }
     }
     val busy = state.running != null
+    // Calibration must happen in the foreground: abort (unsaveable) when the app is stopped.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) vm.onAppStopped() }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LazyColumn(modifier.fillMaxWidth()) {
         item {
@@ -108,6 +119,7 @@ fun CalibrateScreen(modifier: Modifier = Modifier, vm: CalibrationViewModel = vi
         if (busy) {
             item {
                 SectionCard("Messung läuft …") {
+                    Text("App im Vordergrund lassen – beim Wechsel in den Hintergrund oder bei einem Anruf wird abgebrochen.", style = MaterialTheme.typography.bodySmall)
                     LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
                     StatRow("Verbleibend", "${state.remainingSeconds} s")
                     StatRow("Letzte Sekunde (aktueller Offset)", "${Fmt.db(state.currentDb)} dB(A)")
