@@ -3,7 +3,7 @@
 Stadtlärm measures noise levels. It never records audio. This is the core promise of the
 project, and this page explains how the code keeps it, so anyone can check.
 
-## Guarantees (v0.1)
+## Guarantees (app, since v0.1)
 
 1. **Raw audio never touches disk.** No code path writes samples to a file, a database, the
    cache, shared preferences or the clipboard.
@@ -50,9 +50,18 @@ accordingly before you share them.
 
 ## How to verify
 
-- `aapt2 dump permissions stadtlaerm-v0.1.1-debug.apk` lists exactly: `RECORD_AUDIO`,
+- `aapt2 dump permissions stadtlaerm.apk` lists exactly: `RECORD_AUDIO`,
   `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `WAKE_LOCK`
   (plus AndroidX's internal `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`). No `INTERNET`.
 - Search the source: `grep -rn "FileOutputStream\|openFileOutput\|Socket\|HttpURLConnection" android/app android/dsp`
   returns nothing in the audio path. The only file writes are the CSV/JSON exports in
   `android/app/.../data/Repositories.kt` and `android/app/.../ui/CalibrationViewModel.kt`, which contain aggregates only.
+
+## The website
+
+[stadtlaerm.ch](https://stadtlaerm.ch) (source in `docs/`) is static HTML and CSS. It sets no
+cookies, runs no analytics and loads nothing from third parties: no web fonts, no CDNs, no
+external images. It is hosted on GitHub Pages; GitHub may log visitors' IP addresses for
+technical reasons, see the
+[GitHub General Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
+The German privacy page is [docs/datenschutz.html](docs/datenschutz.html).

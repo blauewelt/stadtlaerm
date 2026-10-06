@@ -1,39 +1,44 @@
 # Stadtlärm
 
-> **Deutsch:** Stadtlärm ist ein offenes Messnetz für Strassenlärm in Zürich, betrieben von
-> Anwohnerinnen und Anwohnern ([stadtlaerm.ch](https://stadtlaerm.ch)). Eine Android-App misst
-> nachts A-bewertete Schallpegel, erkennt einzelne Lärmereignisse und ordnet sie einer Quelle zu
-> (Töff, Verkehr, Tram, Stimmen …). Es wird nie Audio gespeichert oder versendet; gespeichert
-> werden nur Pegel und Statistiken. Ein fest installierter Fenstersensor (ESP32) ist geplant.
-> Stand: App v0.1.1, noch nicht auf echten Geräten getestet.
+**Deutsch:** Stadtlärm ist ein offenes Messnetz für Strassenlärm, von Anwohnerinnen und
+Anwohnern für Anwohnerinnen und Anwohner, beginnend in Zürich. Eine Android-App misst den
+Schallpegel durchgehend, auch nachts, hält laute Einzelereignisse (z. B. Töffs, Poser) mit Zeit,
+Spitzenpegel und wahrscheinlicher Quelle fest, fasst jede Nacht von 22 bis 6 Uhr zusammen und
+exportiert die Daten als CSV. Es wird nie Audio gespeichert oder übertragen, und die App hat
+keine Internet-Berechtigung. Die App ist eine Testversion (v0.2.0), ein fest montierter
+Fenstersensor ist in Entwicklung. Download und Anleitung: [stadtlaerm.ch](https://stadtlaerm.ch).
 
-Stadtlärm is an open, resident-run road-noise measurement network for Zürich
-([stadtlaerm.ch](https://stadtlaerm.ch)). Residents measure night-time noise outside their own
-windows with calibrated, comparable methods and keep the data themselves.
+Stadtlärm is an open road-noise measurement network run by residents for residents, starting in
+Zürich ([stadtlaerm.ch](https://stadtlaerm.ch)). An Android app measures A-weighted sound levels
+continuously, including at night, records loud single events (motorbikes, revving cars, …) with
+time, peak level and likely source, summarises each night (22:00–06:00) and exports CSV. The
+data stays on the phone of the person who measured it.
 
 ## Privacy
 
-Stadtlärm measures sound levels and never records audio: no audio is written to disk or sent
-anywhere, and the app has no internet permission. [PRIVACY.md](PRIVACY.md) explains how the code
-keeps this promise and how to check it.
+No audio is ever stored or transmitted, and the app has no internet permission at all; sound
+source classification runs on the phone and only levels and statistics are kept.
+[PRIVACY.md](PRIVACY.md) explains how the code keeps this promise and how to check it.
 
 ## Repository layout
 
 | Path | Contents |
 |---|---|
-| [`android/`](android/) | Android app (Kotlin): measurement service, on-device sound classifier, calibration, UI, plus the platform-independent `dsp` module |
+| [`android/`](android/) | Android app (Kotlin): measurement service, on-device sound classifier, calibration, UI, plus the platform-independent `dsp` module. See [android/README.md](android/README.md) for install, calibration and build instructions |
 | [`firmware/`](firmware/) | Planned ESP32-S3 windowsill sensor (placeholder, no code yet) |
+| [`docs/`](docs/) | The website [stadtlaerm.ch](https://stadtlaerm.ch) (static HTML/CSS, served by GitHub Pages) and the signed APK in `docs/download/` |
 | [`PRIVACY.md`](PRIVACY.md) | What the project does with sound, with references into the code |
 | [`LICENSE`](LICENSE) | Apache License 2.0 |
 
-Install, overnight measurement, calibration and build instructions are in
-[android/README.md](android/README.md).
-
 ## Status
 
-- **Phone app v0.1.1:** builds and passes its JVM unit tests; not yet tested on a real device or
-  emulator. See [android/CHANGELOG.md](android/CHANGELOG.md).
-- **Sensor hardware:** planned, see [firmware/README.md](firmware/README.md).
+- **Phone app v0.2.0:** public test version, the first signed release. It passes its JVM unit
+  tests but is not yet validated on many devices. Download at
+  [stadtlaerm.ch](https://stadtlaerm.ch); changes in [android/CHANGELOG.md](android/CHANGELOG.md).
+- **Windowsill sensor:** planned, see [firmware/README.md](firmware/README.md).
+
+Bug reports and measurements from different phone models are welcome as
+[GitHub issues](https://github.com/blauewelt/stadtlaerm/issues).
 
 ## License
 
