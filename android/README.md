@@ -96,7 +96,8 @@ validated on many devices — see "Status" below.
 1. Put the phone where you want to measure — ideally at an open window or on the balcony,
    microphone facing the street, out of wind and rain. Behind closed glass you measure the
    indoor level (typically 25–35 dB lower).
-2. Connect the charger.
+2. Optionally connect the charger. Measurement does not depend on charging; the charger only
+   saves battery (see below).
 3. **Messen → Messung starten.** A persistent notification shows the current LAeq; you can turn
    the screen off.
 4. In the morning: **Messung stoppen**, then look at **Nächte**.
@@ -108,9 +109,12 @@ screen off. By default the app additionally holds a partial wake lock while meas
 "CPU wach halten"). The audio system already keeps the CPU partly awake while recording, so the
 extra cost should be small; not yet measured on a device — my estimate is a few % of battery
 per hour, plus one classifier inference per second (expected tens of milliseconds on a mid-range
-phone). **Keep the phone on the charger overnight.** On phones with
-aggressive power management (Xiaomi, Huawei, Samsung "deep sleep") also exempt Stadtlärm from
-battery optimisation (Einstellungen → Akku-Optimierung öffnen).
+phone). The app keeps measuring on battery; nothing in it depends on the charger. Over a full
+night that estimate adds up to a noticeable share of the battery, so the charger is convenient,
+not required. For measuring on battery, exempt Stadtlärm from battery optimisation
+(Einstellungen → Akku-Optimierung öffnen; on a Pixel: Settings → Apps → Stadtlärm → App battery
+usage → Unrestricted). Phones with aggressive power management (Xiaomi, Huawei, Samsung "deep
+sleep") may need an extra exemption in the maker's own battery settings.
 
 ## Calibration (step by step)
 
