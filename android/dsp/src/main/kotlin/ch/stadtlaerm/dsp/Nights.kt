@@ -28,9 +28,32 @@ data class NightSummary(
     val allCalibrated: Boolean,
     /** Minutes left out because less than half of them had valid audio (mic silenced etc.). */
     val excludedMinutes: Int = 0,
+    /** Events (after the floor) per hour of valid measurement; NaN without valid time. */
+    val eventsPerHour: Double = Double.NaN,
+    /** "Dynamik": median over the valid minutes of L10 − L90 (dB); NaN without valid minutes. */
+    val dynamicsDb: Double = Double.NaN,
 ) {
     /** Share of the night covered by valid audio (0…1). */
     val coverage: Double get() = if (nominalSeconds > 0) (measuredSeconds / nominalSeconds).coerceIn(0.0, 1.0) else 0.0
+}
+
+/** Burstiness figures shared by the night list and the chart. */
+object Dynamics {
+    /** Events per hour of valid measurement time. */
+    fun eventsPerHour(events: Int, validSeconds: Double): Double =
+        if (validSeconds > 0) events / (validSeconds / 3600.0) else Double.NaN
+
+    /**
+     * Median over [minutes] of L10 − L90: how far the level swings within a minute. Steady traffic
+     * gives a few dB, a quiet street with passing bursts much more. Minutes without both values are
+     * skipped; the median of an even count is the mean of the middle two.
+     */
+    fun medianSpread(minutes: List<MinuteRecord>): Double {
+        val d = minutes.mapNotNull { m -> (m.l10Db - m.l90Db).takeUnless { it.isNaN() } }.sorted()
+        if (d.isEmpty()) return Double.NaN
+        val n = d.size
+        return if (n % 2 == 1) d[n / 2] else (d[n / 2 - 1] + d[n / 2]) / 2
+    }
 }
 
 object NightSummarizer {
@@ -105,6 +128,8 @@ object NightSummarizer {
                 loudestEvent = evs.maxByOrNull { it.lafMaxDb },
                 allCalibrated = ms.isNotEmpty() && ms.all { it.calibrated },
                 excludedMinutes = allMinutes.size - ms.size,
+                eventsPerHour = Dynamics.eventsPerHour(evs.size, dur),
+                dynamicsDb = Dynamics.medianSpread(ms),
             )
         }
     }

@@ -40,7 +40,8 @@ data class EngineConfig(
 
     companion object {
         const val DEFAULT_CLASSIFIER_INTERVAL_SECONDS = 1.0
-        const val DEFAULT_EVENT_MIN_LEVEL_DB = 45.0
+        /** Filters noise at the phone itself (typing, breathing); quiet pass-bys (≈ 35–40 dB) stay. */
+        const val DEFAULT_EVENT_MIN_LEVEL_DB = 30.0
     }
 }
 

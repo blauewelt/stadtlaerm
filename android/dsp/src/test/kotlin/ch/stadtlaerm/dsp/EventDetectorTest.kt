@@ -162,8 +162,9 @@ class EventDetectorTest {
     }
 
     @Test
-    fun defaultFloorIs45dB() {
-        assertEquals(45.0, EngineConfig().eventMinLevelDb)
+    fun defaultFloorIs30dB() {
+        // 30 dB(A): keeps quiet highway pass-bys (≈ 37 dB on a 20 dB background), drops typing at the phone.
+        assertEquals(30.0, EngineConfig().eventMinLevelDb)
     }
 
     @Test

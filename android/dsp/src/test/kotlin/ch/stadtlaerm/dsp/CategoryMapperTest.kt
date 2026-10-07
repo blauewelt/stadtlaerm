@@ -30,6 +30,7 @@ class CategoryMapperTest {
             m.categoryIds,
         )
         assertEquals(0.2f, m.threshold)
+        assertEquals(0.1f, m.top1Threshold)
         assertEquals("Töff & Poser", m.nameDe("loud_vehicle"))
     }
 
@@ -71,12 +72,46 @@ class CategoryMapperTest {
     }
 
     @Test
-    fun thresholdYieldsUnclassified() {
+    fun ruleA_top1LabelDecidesFromTop1Threshold() {
         val m = TestSignals.mapper()
-        assertEquals(CategoryMapper.UNCLASSIFIED, m.decide(scores("Car" to 0.15f, "Speech" to 0.1f)).dominant)
-        assertEquals(CategoryMapper.UNCLASSIFIED, m.decide(scores("Car" to 0.2f)).dominant) // must be *above* 0.2
-        assertEquals(CategoryMapper.UNCLASSIFIED, m.decide(scores("Bird" to 0.95f)).dominant) // unmapped label
+        // The owner's quiet highway pass-bys: "Vehicle" is the best label but scores only 0.1–0.3.
+        val d = m.decide(scores("Vehicle" to 0.14f, "Speech" to 0.08f, "Wind" to 0.05f))
+        assertEquals("road_traffic", d.dominant)
+        assertEquals(0.14f, d.dominantScore)
+        assertEquals("road_traffic", m.decide(scores("Vehicle" to 0.10f)).dominant) // ≥, not >
+        // (a) beats a higher-priority category that is not top-1.
+        assertEquals("road_traffic", m.decide(scores("Car" to 0.3f, "Motorcycle" to 0.25f)).dominant)
+        // Ties on the top-1 score: loud_vehicle preferred (list order).
+        assertEquals("loud_vehicle", m.decide(scores("Motorcycle" to 0.15f, "Car" to 0.15f)).dominant)
+    }
+
+    @Test
+    fun ruleB_categoryThresholdWhenTop1IsUnmappedOrWeak() {
+        val m = TestSignals.mapper()
+        // Top-1 is an unmapped label: the best category wins if ≥ 0.2.
         assertEquals("music", m.decide(scores("Music" to 0.25f, "Bird" to 0.9f)).dominant)
+        assertEquals("road_traffic", m.decide(scores("Bird" to 0.5f, "Car" to 0.2f)).dominant) // ≥ 0.2
+        // Top-1 mapped but below 0.10 cannot happen with a category ≥ 0.2 (that category would be
+        // top-1), so (b) only matters when the top-1 label is unmapped.
+    }
+
+    @Test
+    fun ruleC_otherwiseUnclassified() {
+        val m = TestSignals.mapper()
+        assertEquals(CategoryMapper.UNCLASSIFIED, m.decide(scores("Bird" to 0.95f)).dominant) // unmapped, no category
+        assertEquals(CategoryMapper.UNCLASSIFIED, m.decide(scores("Bird" to 0.6f, "Car" to 0.19f)).dominant)
+        assertEquals(CategoryMapper.UNCLASSIFIED, m.decide(scores("Car" to 0.09f, "Speech" to 0.05f)).dominant) // top-1 < 0.10
+        assertEquals(CategoryMapper.UNCLASSIFIED, m.decide(FloatArray(labels.size)).dominant)
+    }
+
+    @Test
+    fun thresholdsComeFromJsonWithLegacyName() {
+        val json = File(TestSignals.assetsDir(), "categories.json").readText()
+        val custom = CategoryMapper.fromJson(json.replace("\"top1_threshold\": 0.10", "\"top1_threshold\": 0.5"), labels)
+        assertEquals(0.5f, custom.top1Threshold)
+        assertEquals(CategoryMapper.UNCLASSIFIED, custom.decide(scores("Vehicle" to 0.14f)).dominant)
+        val legacy = CategoryMapper.fromJson(json.replace("\"category_threshold\": 0.20", "\"threshold\": 0.3"), labels)
+        assertEquals(0.3f, legacy.threshold)
     }
 
     @Test

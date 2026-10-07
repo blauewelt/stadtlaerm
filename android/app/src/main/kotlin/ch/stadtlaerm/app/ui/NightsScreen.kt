@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import ch.stadtlaerm.chart.ChartFmt
 import ch.stadtlaerm.chart.HistoryActions
 import ch.stadtlaerm.chart.HistorySection
 import ch.stadtlaerm.chart.RangeMode
@@ -138,6 +139,12 @@ private fun NightCard(n: NightSummary, onClick: () -> Unit) {
             StatRow("Nicht gewertete Minuten (< 50 % gültig)", n.excludedMinutes.toString())
         }
         StatRow("Ereignisse", n.eventCount.toString())
+        if (!n.eventsPerHour.isNaN()) {
+            StatRow(
+                "Ereignisse/h · Dynamik L10−L90",
+                "${ChartFmt.comma(n.eventsPerHour, if (n.eventsPerHour < 10) 1 else 0)} · ${ChartFmt.comma(n.dynamicsDb, 1)} dB",
+            )
+        }
         StatRow("davon ≥ Hintergrund + 15 dB", n.strongEventCount.toString())
         n.loudestEvent?.let { e ->
             StatRow(

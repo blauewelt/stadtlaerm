@@ -35,7 +35,7 @@ data class AppSettings(
     val chartHighlightCategory: String = "loud_vehicle",
 ) {
     companion object {
-        const val EVENT_MIN_LEVEL_MIN = 30.0
+        const val EVENT_MIN_LEVEL_MIN = 20.0
         const val EVENT_MIN_LEVEL_MAX = 70.0
     }
 }

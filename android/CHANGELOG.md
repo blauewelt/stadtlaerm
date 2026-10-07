@@ -2,7 +2,8 @@
 
 ## 0.3.0 — 2026-10-07
 
-Test version: a chart of the measured noise, and an absolute floor for events.
+Test version: a chart of the measured noise, an absolute floor for events, and a classification
+rule that no longer drops quiet traffic into «unklassifiziert».
 
 - **Chart («Nächte»).** A chart of the measured levels over time, drawn by the app itself (no
   chart library): the background band L90–L10, the LAeq line and every event as a dot at its
@@ -15,13 +16,23 @@ Test version: a chart of the measured noise, and an absolute floor for events.
   chips below the chart, remembered); the others are grey. Tap for a tooltip with the minute's
   levels or the event's details (with weekday and date in the day and week views); a summary row
   shows LAeq, event count and the loudest event of the window, plus the measured share of the
-  time and any interruptions. Tapping a night in the list opens it in the chart.
-- **Event floor.** New setting «Mindestpegel für Ereignisse (LAFmax)», 30–70 dB(A), default 45.
-  An event is only kept if its LAFmax reaches the floor (in a quiet room, keystrokes 10 dB above a
-  20 dB background were events). The floor in force is stored with each event (`min_level_db`,
+  time, **events per hour** of valid measurement, the **dynamics** (median over the valid minutes
+  of L10 − L90) and any interruptions. The night list shows events/h and dynamics too. Events of
+  other categories are drawn as smaller grey dots (6 dp) so a night with hundreds of quiet
+  pass-bys does not bury the LAeq line. Tapping a night in the list opens it in the chart.
+- **Event floor.** New setting «Mindestpegel für Ereignisse (LAFmax)», 20–70 dB(A), default 30.
+  An event is only kept if its LAFmax reaches the floor: this filters noise at the phone itself
+  (typing, breathing ≈ 20–30 dB) while quiet pass-bys stay (on a real windowsill night, highway
+  passes peaked at a median of 37 dB(A), 13 dB above a 20 dB background). The floor in force is stored with each event (`min_level_db`,
   also in the events CSV). Events recorded before 0.3.0 are filtered with the current floor when
   the night list and the chart are shown, so both agree; their CSV export is unchanged (empty
   `min_level_db`).
+- **Category rule.** If the top-1 AudioSet label belongs to a category and scores ≥ 0.10
+  (`top1_threshold`), that category wins; otherwise the best category if its score ≥ 0.20
+  (`category_threshold`, formerly `threshold`, now inclusive); otherwise «unklassifiziert». Before,
+  only the 0.2 rule applied, and on a real night 328 of 440 events whose best label was «Vehicle»
+  (scores 0.1–0.3) ended unclassified. Tie-break unchanged (Töff & Poser first). Applies to new
+  measurements; stored events keep their category.
 - Database v3 (migration adds `events.min_level_db`).
 - New Gradle module `chart/` (drawing model, Compose chart, app theme) with JVM tests and
   Paparazzi renders.

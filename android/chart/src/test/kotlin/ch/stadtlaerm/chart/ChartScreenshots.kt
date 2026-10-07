@@ -66,7 +66,7 @@ class ChartScreenshots {
     }
 
     @Composable
-    private fun Screen(data: ChartData, dark: Boolean, highlight: String = "loud_vehicle", selection: Selection? = null, floor: Double = 45.0) {
+    private fun Screen(data: ChartData, dark: Boolean, highlight: String = "loud_vehicle", selection: Selection? = null, floor: Double = 30.0) {
         StadtlaermTheme(dark = dark) {
             Column(Modifier.fillMaxSize()) {
                 Text(

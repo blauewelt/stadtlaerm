@@ -1,8 +1,9 @@
 {
   "version": 1,
   "model": "yamnet (AudioSet ontology, 521 classes)",
-  "comment": "Category score = max of member scores. Dominant = highest category score > threshold, else 'unclassified'. Category order is the tie-break priority (earlier wins). Every name must match a line of yamnet_labels.txt exactly; a unit test enforces this.",
-  "threshold": 0.2,
+  "comment": "Category score = max of member scores. Dominant: (a) the category of the top-1 label if that label is mapped and its score >= top1_threshold; (b) else the highest category score if >= category_threshold; (c) else 'unclassified'. Category order is the tie-break priority (earlier wins). Every name must match a line of yamnet_labels.txt exactly; a unit test enforces this.",
+  "top1_threshold": 0.10,
+  "category_threshold": 0.20,
   "tie_margin": 0.0,
   "fallback": { "id": "unclassified", "name_de": "Sonstiges / unklassifiziert" },
   "categories": [

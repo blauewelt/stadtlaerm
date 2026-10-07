@@ -158,7 +158,7 @@ fun HistorySection(
                 ) {
                     LegendItem(Swatch.Dot(palette.series2), "$highlightName (hervorgehoben)")
                     if (window.mode != RangeMode.WEEK) {
-                        LegendItem(Swatch.Dot(scheme.onSurfaceVariant.copy(alpha = 0.55f).compositeOver(cardColor)), "andere Ereignisse")
+                        LegendItem(Swatch.Dot(scheme.onSurfaceVariant.copy(alpha = 0.55f).compositeOver(cardColor), small = true), "andere Ereignisse")
                     }
                     LegendItem(Swatch.Line(palette.series1), if (window.mode == RangeMode.WEEK) "LAeq pro Stunde" else "LAeq pro Minute")
                     LegendItem(Swatch.Band(palette.series1.copy(alpha = palette.bandAlpha).compositeOver(cardColor)), "Hintergrund L90–L10")
@@ -195,10 +195,8 @@ fun HistorySection(
             )
         }
         if (s != null && model?.isEmpty == false) {
-            val parts = listOf("Messung ${ChartFmt.percent(s.coverage)} der Zeit") + s.gapTexts.take(2) +
-                (if (s.gapTexts.size > 2) listOf(if (s.gapTexts.size == 3) "1 weitere Lücke" else "${s.gapTexts.size - 2} weitere Lücken") else emptyList())
             Text(
-                parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
+                s.line(), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = margin),
             )
         }
@@ -218,7 +216,7 @@ fun UncalibratedBadge() {
 }
 
 private sealed interface Swatch {
-    data class Dot(val color: Color) : Swatch
+    data class Dot(val color: Color, val small: Boolean = false) : Swatch
     data class Line(val color: Color) : Swatch
     data class Band(val color: Color) : Swatch
 }
@@ -228,7 +226,7 @@ private fun LegendItem(swatch: Swatch, text: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Canvas(Modifier.size(width = 14.dp, height = 10.dp)) {
             when (swatch) {
-                is Swatch.Dot -> drawCircle(swatch.color, size.height / 2, Offset(size.width / 2, size.height / 2))
+                is Swatch.Dot -> drawCircle(swatch.color, if (swatch.small) size.height / 3 else size.height / 2, Offset(size.width / 2, size.height / 2))
                 is Swatch.Line -> drawLine(swatch.color, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 2.dp.toPx(), StrokeCap.Round)
                 is Swatch.Band -> drawRect(swatch.color)
             }

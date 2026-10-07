@@ -87,6 +87,24 @@ class NightsAndCsvTest {
     }
 
     @Test
+    fun eventsPerHourAndDynamics() {
+        // 30 valid minutes (0.5 h) with L10 − L90 spreads 2, 4, 6 … (minute() gives L10 − L90 = 4 dB).
+        val base = ms(2026, 10, 2, 23, 0)
+        val minutes = (0 until 30).map { i ->
+            minute(base + i * 60_000L, 40.0).copy(l10Db = 40.0 + (i % 3) * 2, l90Db = 38.0 - (i % 3) * 2)
+        } + minute(base + 30 * 60_000L, 40.0).copy(validSeconds = 10.0) // < 50 %: not counted
+        val events = (0 until 12).map { event(base + it * 120_000L, 60.0, 40.0, "road_traffic") } +
+            event(base + 61_000L, 35.0, 30.0, "voices") // below the floor
+        val n = NightSummarizer.summarize(minutes, events, zone, eventMinLevelDb = 45.0).single()
+        assertEquals(24.0, n.eventsPerHour, 1e-9) // 12 events in 0.5 h of valid measurement
+        // Spreads: 2, 6, 10 each ten times → median 6.
+        assertEquals(6.0, n.dynamicsDb, 1e-9)
+        assertEquals(5.0, Dynamics.medianSpread(listOf(minute(base, 40.0).copy(l10Db = 44.0, l90Db = 40.0), minute(base, 40.0).copy(l10Db = 46.0, l90Db = 40.0))))
+        assertTrue(Dynamics.eventsPerHour(3, 0.0).isNaN())
+        assertTrue(Dynamics.medianSpread(emptyList()).isNaN())
+    }
+
+    @Test
     fun csvQuotesLabelsWithCommas() {
         val t = ms(2026, 10, 2, 23, 10)
         val e = event(t, 80.0, 50.0, "road_traffic").copy(

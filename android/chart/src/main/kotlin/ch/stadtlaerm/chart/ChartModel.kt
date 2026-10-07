@@ -71,7 +71,23 @@ data class WindowSummary(
     /** «unterbrochen 20:54–23:54», «Messung ab 23:54», … */
     val gapTexts: List<String>,
     val anyUncalibrated: Boolean,
-)
+    /** Events (after the floor) per hour of valid measurement. */
+    val eventsPerHour: Double = Double.NaN,
+    /** Median over valid minutes of L10 − L90. */
+    val dynamicsDb: Double = Double.NaN,
+) {
+    /** «Messung 76 % der Zeit · 48 Ereignisse/h · Dynamik L10−L90 5,5 dB · unterbrochen …» */
+    fun line(maxGaps: Int = 2): String {
+        val parts = ArrayList<String>()
+        parts += "Messung ${ChartFmt.percent(coverage)} der Zeit"
+        if (!eventsPerHour.isNaN()) parts += "${ChartFmt.comma(eventsPerHour, if (eventsPerHour < 10) 1 else 0)} Ereignisse/h"
+        if (!dynamicsDb.isNaN()) parts += "Dynamik L10−L90 ${ChartFmt.comma(dynamicsDb, 1)} dB"
+        parts += gapTexts.take(maxGaps)
+        val more = gapTexts.size - maxGaps
+        if (more == 1) parts += "1 weitere Lücke" else if (more > 1) parts += "$more weitere Lücken"
+        return parts.joinToString(" · ")
+    }
+}
 
 /**
  * Everything the chart draws, in time/dB space (no pixels). Built once per data/mode/highlight
@@ -285,6 +301,8 @@ class ChartModel(
                 coverage = if (elapsed > 0) (secs / elapsed).coerceIn(0.0, 1.0) else 0.0,
                 gapTexts = if (valid.isEmpty()) emptyList() else gapTexts(data, gaps, valid, windows),
                 anyUncalibrated = minutes.any { !it.calibrated },
+                eventsPerHour = ch.stadtlaerm.dsp.Dynamics.eventsPerHour(floored.size, secs),
+                dynamicsDb = ch.stadtlaerm.dsp.Dynamics.medianSpread(valid),
             )
         }
 
@@ -348,6 +366,9 @@ object ChartFmt {
     fun db(v: Double, decimals: Int = 1): String =
         if (v.isNaN() || v.isInfinite()) "–" else String.format(locale, "%.${decimals}f", v)
     fun percent(v: Double): String = String.format(locale, "%.0f %%", v * 100)
+    /** German decimal comma («5,5»), for the dynamics figures. */
+    fun comma(v: Double, decimals: Int): String =
+        if (v.isNaN() || v.isInfinite()) "–" else String.format(Locale.GERMANY, "%.${decimals}f", v)
     fun duration(seconds: Double): String = when {
         seconds < 60 -> String.format(locale, "%.1f s", seconds)
         else -> String.format(locale, "%d min %02d s", (seconds / 60).toInt(), (seconds % 60).toInt())

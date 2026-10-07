@@ -37,8 +37,11 @@ import kotlin.math.abs
 
 /** Pixel sizes of the chart, resolved from dp once per density. */
 private class ChartDims(d: androidx.compose.ui.unit.Density) {
-    val dotRadius = with(d) { 4.5.dp.toPx() } // 9 dp dot
+    val dotRadius = with(d) { 4.5.dp.toPx() } // 9 dp dot (highlighted category)
     val ring = with(d) { 2.dp.toPx() }
+    // Other events are smaller so that hundreds of quiet pass-bys do not bury the LAeq line.
+    val otherRadius = with(d) { 3.dp.toPx() } // 6 dp dot
+    val otherRing = with(d) { 1.5.dp.toPx() }
     val touchRadius = with(d) { 16.dp.toPx() }
     val line = with(d) { 2.dp.toPx() }
     val grid = with(d) { 0.75.dp.toPx() }
@@ -279,8 +282,8 @@ private fun DrawScope.drawChart(l: ChartLayout, c: ChartColors, d: ChartDims) {
     }
     // Events: others below, highlighted on top; each with a ring in the card surface colour.
     for (dot in g.otherDots) {
-        drawCircle(c.surface, d.dotRadius + d.ring, Offset(dot.x, dot.y))
-        drawCircle(c.other, d.dotRadius, Offset(dot.x, dot.y))
+        drawCircle(c.surface, d.otherRadius + d.otherRing, Offset(dot.x, dot.y))
+        drawCircle(c.other, d.otherRadius, Offset(dot.x, dot.y))
     }
     for (dot in g.highlightDots) {
         drawCircle(c.surface, d.dotRadius + d.ring, Offset(dot.x, dot.y))
@@ -331,9 +334,11 @@ private fun DrawScope.drawSelection(l: ChartLayout, s: Selection, lines: List<Te
         }
         is Selection.Event -> {
             val y = g.yOf(s.event.lafMaxDb)
-            drawCircle(c.text, d.dotRadius + d.ring + d.grid * 2, Offset(x, y), style = Stroke(d.grid * 2))
-            drawCircle(c.surface, d.dotRadius + d.ring, Offset(x, y))
-            drawCircle(if (s.highlighted) c.series2 else c.other, d.dotRadius, Offset(x, y))
+            val r = if (s.highlighted) d.dotRadius else d.otherRadius
+            val ring = if (s.highlighted) d.ring else d.otherRing
+            drawCircle(c.text, r + ring + d.grid * 2, Offset(x, y), style = Stroke(d.grid * 2))
+            drawCircle(c.surface, r + ring, Offset(x, y))
+            drawCircle(if (s.highlighted) c.series2 else c.other, r, Offset(x, y))
         }
         is Selection.NoData -> Unit
     }

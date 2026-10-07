@@ -24,7 +24,7 @@ below are relative to this directory.
 | LAeq,1s / LAeq,1min | Energy-equivalent A-weighted level over 1 s / 1 min (from the un-time-weighted signal) |
 | LAFmax / LAFmin | Max/min of LAF in the period (max from the continuous Fast signal, min from the 125 ms samples) |
 | L1, L10, L50, L90 | Level exceeded 1/10/50/90 % of the time, from the 480 LAF samples of the minute (so L10 > L90) |
-| Event | LAF > background + threshold (default 10 dB) for ≥ 0.5 s; ends below background + threshold − 3 dB. Background = L90 of LAF over the trailing 5 min, frozen at event start. Kept only if its LAFmax also reaches the absolute **event floor** (setting «Mindestpegel», default 45 dB(A), 30–70) |
+| Event | LAF > background + threshold (default 10 dB) for ≥ 0.5 s; ends below background + threshold − 3 dB. Background = L90 of LAF over the trailing 5 min, frozen at event start. Kept only if its LAFmax also reaches the absolute **event floor** (setting «Mindestpegel», default 30 dB(A), 20–70) |
 | SEL (LAE) | Sound exposure level of the event, re 1 s: `10·log10(Σ 10^(Leq_tick/10)·0.125 s)` |
 | Valid time / coverage | Seconds of a minute with a real microphone signal. Time while Android silences the mic (phone call, voice assistant — the app then receives zeros) or while the input is digital silence, plus 0.5 s of filter recovery, is excluded from every level, percentile, event and the background |
 | Night LAeq | Energy average over the valid time of all minutes that start between 22:00 and 06:00 local time; minutes with < 50 % coverage are left out. The night is 8 h, or 7 h / 9 h on DST-change nights |
@@ -35,7 +35,9 @@ which gives an offset of **112.35 dB**. All data measured this way is flagged
 `calibrated = false`.
 
 **Event floor.** Relative to a very quiet background (20 dB at night indoors) even keystrokes are
-10 dB louder, so events must also reach an absolute LAFmax. A candidate that never reaches the
+10 dB louder, so events must also reach an absolute LAFmax. The default of 30 dB(A) filters noise
+at the phone itself (typing, breathing) but keeps quiet pass-bys: on a real windowsill night,
+distant highway passes peaked at a median of 37 dB(A), about 13 dB above a 20 dB background. A candidate that never reaches the
 floor is discarded and not counted in the minute's `event_count`. The floor in force is stored
 with every event (`min_level_db`). Events recorded before v0.3.0 have none; the night list and the
 chart apply the *current* floor to all stored events, so they always agree. With an uncalibrated
@@ -60,7 +62,7 @@ The **Nächte** tab starts with a chart of the measured levels, drawn by the app
 - **Marks:** a band from L90 to L10 (the background), the LAeq line per minute, and every event
   as a dot at (start, LAFmax). One category is highlighted in orange and drawn on top (default
   Töff & Poser; chosen with the scrolling row of chips under the chart and remembered; the
-  selected chip carries the same orange dot), all others grey. Night
+  selected chip carries the same orange dot), all others as smaller grey dots. Night
   periods are shaded. The y axis runs from the lowest L90 − 5 dB to the loudest shown event or
   LAeq + 5 dB (rounded to 5 dB, at least 30 dB).
 - **Gaps:** the line and band are never drawn across a missing minute or one with < 50 % valid
@@ -73,8 +75,10 @@ The **Nächte** tab starts with a chart of the measured levels, drawn by the app
   event dot within 16 dp (in the day and week views with weekday and date); while the tooltip is open, dragging sideways moves the crosshair.
   Tapping the tooltip (or outside the plot) closes it.
 - **Summary:** LAeq of the window (same rule as the night summaries), number of events (and of
-  the highlighted category), the loudest event, the measured share of the time and any
-  interruptions.
+  the highlighted category), the loudest event, the measured share of the time, **events per
+  hour** of valid measurement, the **dynamics** (median over the valid minutes of L10 − L90: a
+  few dB for steady traffic, more for a quiet street with bursts) and any interruptions. The
+  night list shows events/h and dynamics as well.
 
 The chart code is in `chart/`: `Windows.kt` (window arithmetic), `ChartModel.kt` (data → model:
 series, runs, gaps, y range, events, summary), `ChartGeometry.kt` (pixels, hit testing),
@@ -94,9 +98,13 @@ read from the directory given in `STADTLAERM_REAL_DATA` and never belong in the 
 
 The on-device classifier is [YAMNet](https://www.kaggle.com/models/google/yamnet) (521 AudioSet
 classes, MediaPipe float32 build, Apache-2.0), run on the latest 0.975 s every second. Its
-scores are grouped into project categories by `app/src/main/assets/categories.json`
-(category score = max of its members, dominant = highest category score > 0.2, otherwise
-"unclassified"; ties are broken by list order, so **Töff & Poser beats Strassenverkehr**):
+scores are grouped into project categories by `app/src/main/assets/categories.json`. Category
+score = max of its members. The dominant category is (a) the category of the **top-1 label** if
+that label is mapped and scores ≥ `top1_threshold` (0.10), else (b) the highest category score if
+≥ `category_threshold` (0.20), else (c) "unclassified". Rule (a) exists because quiet, distant
+sources score low even when the best label is clearly right (a highway pass-by: «Vehicle» at
+0.1–0.3). Ties are broken by list order, so **Töff & Poser beats Strassenverkehr**. Stored events
+keep the category they were given when measured:
 
 | id | UI name | AudioSet classes |
 |---|---|---|

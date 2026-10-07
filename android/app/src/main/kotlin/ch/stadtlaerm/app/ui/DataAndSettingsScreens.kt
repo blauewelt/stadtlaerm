@@ -162,7 +162,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 onValueChange = { v -> c.settings.update { it.copy(eventMinLevelDb = Math.round(v).toDouble()) } },
             )
             Text(
-                "Ereignisse zählen nur, wenn sie lauter sind als dieser Pegel. Bei unkalibriertem Telefon sind die Pegel ungefähr.",
+                "Ereignisse zählen nur, wenn ihr Spitzenpegel über diesem Wert liegt. Filtert Geräusche am Telefon selbst (Tippen, Atmen); " +
+                    "leise Vorbeifahrten bleiben erhalten. Bei unkalibriertem Telefon sind die Pegel ungefähr.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

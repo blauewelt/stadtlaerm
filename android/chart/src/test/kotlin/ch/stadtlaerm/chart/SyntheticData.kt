@@ -38,7 +38,7 @@ object SyntheticData {
             lafMaxDb = e.lafMax, selDb = e.lafMax + 10 * log10(e.durationS) - 3, backgroundDb = background, thresholdDb = 10.0,
             dominantCategory = e.category, dominantScore = 0.6f,
             topLabels = listOfNotNull(label?.let { LabelScore(it, 0.6f) }), classifierFrames = 3,
-            calibrationId = null, audioSource = "UNPROCESSED", calibrated = calibrated, minLevelDb = 45.0,
+            calibrationId = null, audioSource = "UNPROCESSED", calibrated = calibrated, minLevelDb = 30.0,
         )
     }
 

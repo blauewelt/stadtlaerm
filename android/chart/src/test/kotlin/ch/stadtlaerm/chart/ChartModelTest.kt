@@ -295,4 +295,29 @@ class ChartModelTest {
         val p = weekModel.points.first { it.valid }
         assertEquals("Mo 5.10. 00:00–01:00", tooltipLines(Selection.Point(p), weekModel)[0])
     }
+
+    // ---- dynamics -------------------------------------------------------------------------------
+
+    @Test
+    fun summaryLineWithEventsPerHourAndDynamics() {
+        // 60 valid minutes with L10 − L90 = 6 dB (minute() helper: l10 = laeq + 3, l90 = laeq − 3).
+        val ms = minutes(22, 0, 60) { 40.0 }
+        val evs = (0 until 48).map { event(at(22, 0) + it * 75_000L, 50.0) } + event(at(22, 30), 25.0) // last one below floor
+        val m = build(ms, evs, floor = 30.0)
+        assertEquals(48.0, m.summary.eventsPerHour, 1e-9)
+        assertEquals(6.0, m.summary.dynamicsDb, 1e-9)
+        // Night 22–06 measured only 22–23: coverage 12.5 %, then the end of measurement.
+        assertEquals("Messung 13 % der Zeit · 48 Ereignisse/h · Dynamik L10−L90 6,0 dB · Messung bis 23:00", m.summary.line())
+        val few = build(ms, evs.take(5), floor = 30.0)
+        assertTrue(few.summary.line().contains("5,0 Ereignisse/h"), few.summary.line())
+    }
+
+    @Test
+    fun dynamicsMatchNightSummary() {
+        val d = SyntheticData.fridayNight()
+        val m = ChartModel.build(d, zone, "loud_vehicle", 30.0)
+        val n = NightSummarizer.summarize(d.minutes, d.events, zone, eventMinLevelDb = 30.0).single()
+        assertEquals(n.eventsPerHour, m.summary.eventsPerHour, 1e-9)
+        assertEquals(n.dynamicsDb, m.summary.dynamicsDb, 1e-9)
+    }
 }

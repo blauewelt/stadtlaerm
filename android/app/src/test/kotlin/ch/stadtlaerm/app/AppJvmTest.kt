@@ -192,8 +192,10 @@ class AppJvmTest {
     }
 
     @Test
-    fun eventFloorDefaultsTo45dB() {
-        assertEquals(45.0, AppSettings().eventMinLevelDb)
+    fun eventFloorDefaultsTo30dB() {
+        assertEquals(30.0, AppSettings().eventMinLevelDb)
+        assertEquals(20.0, AppSettings.EVENT_MIN_LEVEL_MIN)
+        assertEquals(70.0, AppSettings.EVENT_MIN_LEVEL_MAX)
         assertEquals("loud_vehicle", AppSettings().chartHighlightCategory)
     }
 }
