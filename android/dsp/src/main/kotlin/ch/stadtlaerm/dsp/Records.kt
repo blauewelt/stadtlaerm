@@ -68,9 +68,50 @@ data class MinuteRecord(
     val validSeconds: Double = durationSeconds,
     /** Number of times the sample clock was re-anchored to the wall clock in this minute. */
     val clockCorrections: Int = 0,
+    /**
+     * Levels as originally measured, kept once the minute has been re-evaluated with a later
+     * calibration («nachträglich kalibriert», v0.3.2); null for minutes never re-evaluated.
+     */
+    val original: MinuteLevels? = null,
+    /**
+     * Calibration the [original] levels were measured with: its id, or
+     * [ch.stadtlaerm.dsp.calibration.Recalibration.FROM_DEFAULT] for the uncalibrated default.
+     * Null if never re-evaluated. Always describes the original measurement, not an intermediate
+     * re-evaluation.
+     */
+    val recalibratedFromId: String? = null,
+    /** Offset the [original] levels were measured with; null if never re-evaluated. */
+    val recalibrationOffsetDb: Double? = null,
 ) {
     /** Fraction of the minute's duration with valid audio (0…1). */
     val coverage: Double get() = if (durationSeconds > 0) (validSeconds / durationSeconds).coerceIn(0.0, 1.0) else 0.0
+
+    /** True if the levels were re-evaluated with a calibration made after the measurement. */
+    val recalibrated: Boolean get() = recalibratedFromId != null
+
+    /** The level fields of this record (NaN where missing). */
+    val levels: MinuteLevels get() = MinuteLevels(laeqDb, lafMaxDb, lafMinDb, l1Db, l10Db, l50Db, l90Db)
+}
+
+/** The calibration-dependent level fields of a minute (dB, NaN where missing). */
+data class MinuteLevels(
+    val laeqDb: Double,
+    val lafMaxDb: Double,
+    val lafMinDb: Double,
+    val l1Db: Double,
+    val l10Db: Double,
+    val l50Db: Double,
+    val l90Db: Double,
+) {
+    /** Every level shifted by [deltaDb]; NaN stays NaN. */
+    fun shifted(deltaDb: Double) = MinuteLevels(
+        laeqDb + deltaDb, lafMaxDb + deltaDb, lafMinDb + deltaDb, l1Db + deltaDb, l10Db + deltaDb, l50Db + deltaDb, l90Db + deltaDb,
+    )
+}
+
+/** The calibration-dependent level fields of an event (dB). */
+data class EventLevels(val lafMaxDb: Double, val selDb: Double, val backgroundDb: Double) {
+    fun shifted(deltaDb: Double) = EventLevels(lafMaxDb + deltaDb, selDb + deltaDb, backgroundDb + deltaDb)
 }
 
 /** A detected noise event with its classification. */
@@ -96,7 +137,19 @@ data class NoiseEvent(
      * "Mindestpegel"); NaN for events recorded before v0.3.0, which had no floor.
      */
     val minLevelDb: Double = Double.NaN,
+    /** Levels as originally measured, once re-evaluated with a later calibration (v0.3.2); else null. */
+    val original: EventLevels? = null,
+    /** Calibration id (or "default") of the [original] levels; null if never re-evaluated. */
+    val recalibratedFromId: String? = null,
+    /** Offset of the [original] levels; null if never re-evaluated. */
+    val recalibrationOffsetDb: Double? = null,
 ) {
+    /** True if the levels were re-evaluated with a calibration made after the measurement. */
+    val recalibrated: Boolean get() = recalibratedFromId != null
+
+    /** The level fields of this event. */
+    val levels: EventLevels get() = EventLevels(lafMaxDb, selDb, backgroundDb)
+
     /**
      * Read-time filter with the *current* floor, so that events stored before the floor existed
      * (or with a lower one) are treated the same way everywhere (night list, chart).

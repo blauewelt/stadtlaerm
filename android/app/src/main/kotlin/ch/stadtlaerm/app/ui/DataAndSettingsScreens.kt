@@ -43,6 +43,10 @@ import ch.stadtlaerm.app.audio.AudioSourceSelector
 import ch.stadtlaerm.app.container
 import ch.stadtlaerm.app.data.AppSettings
 import ch.stadtlaerm.app.data.CalibrationRepository
+import ch.stadtlaerm.app.data.Recalibrator
+import ch.stadtlaerm.dsp.calibration.EventFloor
+import ch.stadtlaerm.dsp.calibration.Recalibration
+import kotlinx.coroutines.flow.flowOf
 import ch.stadtlaerm.dsp.Acoustics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -59,6 +63,10 @@ fun DataScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var confirmClear by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<String?>(null) }
+    val source = remember { AudioSourceSelector.select(context) }
+    val active by remember { c.calibrations.activeFlow(source) }.collectAsStateWithLifecycle(null)
+    val recal by c.recalibrator.state.collectAsStateWithLifecycle()
+    var confirmRecal by remember { mutableStateOf(false) }
 
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         Text(
@@ -88,11 +96,46 @@ fun DataScreen(modifier: Modifier = Modifier) {
                 }
             }) { Text("CSV exportieren & teilen") }
         }
+        SectionCard("Alte Messungen neu bewerten") {
+            val a = active?.takeIf { it.isCalibrated }
+            val target = a?.let { Recalibration.Target(it.id, it.offsetDb, source) }
+            val counts by remember(target) { target?.let { c.recalibrator.counts(it) } ?: flowOf(0 to 0) }
+                .collectAsStateWithLifecycle(0 to 0)
+            val (n, m) = counts
+            val measuring = live.running || live.starting
+            val runningRecal = recal is Recalibrator.State.Running
+            Text(
+                "Nach einer Kalibrierung können frühere Messungen derselben Audioquelle damit neu bewertet werden: Alle Pegel " +
+                    "werden um die Differenz der Offsets verschoben (neu − damals). Die Originalwerte bleiben gespeichert und " +
+                    "stehen im CSV-Export (orig_…). Die Anzahl Ereignisse pro Minute bleibt wie gemessen.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            val explanation = when {
+                target == null -> "Keine Kalibrierung aktiv (Audioquelle ${AudioSourceSelector.labelDe(source)}). Zuerst unter «Kalibrieren» kalibrieren."
+                n + m == 0 -> "Alle Messungen mit der Audioquelle ${AudioSourceSelector.labelDe(source)} verwenden bereits die aktive Kalibrierung #${target.calibrationId}."
+                measuring -> "Zuerst die Messung stoppen."
+                else -> "${CalibrationTexts.minutes(n)} und ${CalibrationTexts.events(m)} (Audioquelle ${AudioSourceSelector.labelDe(source)}) " +
+                    "wurden ohne oder mit einer anderen Kalibrierung aufgenommen. Aktiv: #${target.calibrationId}, Offset ${Fmt.db(target.offsetDb, 2)} dB."
+            }
+            Text(explanation, style = MaterialTheme.typography.bodySmall)
+            Button(
+                onClick = { confirmRecal = true },
+                enabled = target != null && n + m > 0 && !measuring && !runningRecal,
+            ) { Text("Alte Messungen neu bewerten") }
+            RecalibrationStatus(recal) { c.recalibrator.acknowledge() }
+            if (confirmRecal && target != null) {
+                RecalibrationDialog(
+                    minutes = n, events = m, measuring = measuring,
+                    onConfirm = { confirmRecal = false; c.recalibrator.start(target) },
+                    onDismiss = { confirmRecal = false },
+                )
+            }
+        }
         SectionCard("Daten löschen") {
             Text("Löscht alle Minutenwerte und Ereignisse. Kalibrierungen bleiben erhalten.", style = MaterialTheme.typography.bodySmall)
             Button(
                 onClick = { confirmClear = true },
-                enabled = !live.running,
+                enabled = !live.running && recal !is Recalibrator.State.Running,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
             ) { Text("Alle Messdaten löschen") }
             if (live.running) Text("Zuerst die Messung stoppen.", style = MaterialTheme.typography.bodySmall)
@@ -155,16 +198,18 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodySmall,
             )
             Spacer(Modifier.height(8.dp))
-            StatRow("Mindestpegel für Ereignisse (LAFmax)", "${s.eventMinLevelDb.toInt()} dB(A)")
+            StatRow("Mindestpegel für Ereignisse (LAFmax)", "${Fmt.db(s.eventMinLevelDb, 1)} dB(A)")
             Slider(
                 value = s.eventMinLevelDb.toFloat(),
                 valueRange = AppSettings.EVENT_MIN_LEVEL_MIN.toFloat()..AppSettings.EVENT_MIN_LEVEL_MAX.toFloat(),
-                steps = (AppSettings.EVENT_MIN_LEVEL_MAX - AppSettings.EVENT_MIN_LEVEL_MIN).toInt() - 1,
-                onValueChange = { v -> c.settings.update { it.copy(eventMinLevelDb = Math.round(v).toDouble()) } },
+                // 0.5 dB steps: the floor follows calibrations in 0.5 dB steps.
+                steps = ((AppSettings.EVENT_MIN_LEVEL_MAX - AppSettings.EVENT_MIN_LEVEL_MIN) * 2).toInt() - 1,
+                onValueChange = { v -> c.settings.update { it.copy(eventMinLevelDb = EventFloor.roundToHalf(v.toDouble())) } },
             )
             Text(
                 "Ereignisse zählen nur, wenn ihr Spitzenpegel über diesem Wert liegt. Filtert Geräusche am Telefon selbst (Tippen, Atmen); " +
-                    "leise Vorbeifahrten bleiben erhalten. Bei unkalibriertem Telefon sind die Pegel ungefähr.",
+                    "leise Vorbeifahrten bleiben erhalten. Bei unkalibriertem Telefon sind die Pegel ungefähr. Wird eine Kalibrierung " +
+                    "gespeichert, verschiebt sich der Wert um die Änderung des Offsets.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

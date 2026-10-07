@@ -121,6 +121,26 @@ class ChartScreenshots {
         snap("tooltip_minute_dark") { Screen(d, dark = true, selection = Selection.Point(m), highlight = "voices") }
     }
 
+    /** The synthetic night re-evaluated with a later calibration (+9.6 dB): «nachträglich kalibriert». */
+    private fun recalibratedNight(): ChartData {
+        val d = SyntheticData.fridayNight()
+        val t = ch.stadtlaerm.dsp.calibration.Recalibration.Target(4L, ch.stadtlaerm.dsp.Acoustics.DEFAULT_CALIBRATION_OFFSET_DB + 9.6, "UNPROCESSED")
+        return d.copy(
+            minutes = d.minutes.map { ch.stadtlaerm.dsp.calibration.Recalibration.recalibrate(it, t) },
+            events = d.events.map { ch.stadtlaerm.dsp.calibration.Recalibration.recalibrate(it, ch.stadtlaerm.dsp.Acoustics.DEFAULT_CALIBRATION_OFFSET_DB, t) },
+        )
+    }
+
+    @Test fun nachtRecalibrated() {
+        snap("nacht_recal_light") { Screen(recalibratedNight(), dark = false, floor = 39.5) }
+    }
+
+    @Test fun minuteTooltipRecalibrated() {
+        val d = recalibratedNight()
+        val m = ChartModel.minutePoint(d.minutes[d.minutes.size / 3])
+        snap("tooltip_minute_recal_dark") { Screen(d, dark = true, selection = Selection.Point(m), floor = 39.5) }
+    }
+
     // ---- The owner's first real night (skipped unless STADTLAERM_REAL_DATA is set) ------------
 
     private fun real(mode: RangeMode, date: LocalDate): ChartData {

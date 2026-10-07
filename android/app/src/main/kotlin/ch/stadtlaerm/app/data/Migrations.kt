@@ -52,6 +52,53 @@ object MigrationSql {
     val MIGRATE_2_3: List<String> = listOf(
         "ALTER TABLE `events` ADD COLUMN `min_level_db` REAL",
     )
+
+    /** v4 `minutes` table, exactly as Room generates it (verified by a unit test). */
+    const val CREATE_MINUTES_V4 =
+        "CREATE TABLE IF NOT EXISTS `minutes` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startEpochMs` INTEGER NOT NULL, " +
+            "`startIso` TEXT NOT NULL, `durationSeconds` REAL NOT NULL, `laeqDb` REAL, `lafMaxDb` REAL, `lafMinDb` REAL, " +
+            "`l1Db` REAL, `l10Db` REAL, `l50Db` REAL, `l90Db` REAL, `eventCount` INTEGER NOT NULL, `dominantCategory` TEXT, " +
+            "`categorySharesJson` TEXT NOT NULL, `classifierFrames` INTEGER NOT NULL, `calibrationId` INTEGER, " +
+            "`calibrationOffsetDb` REAL NOT NULL, `audioSource` TEXT NOT NULL, `calibrated` INTEGER NOT NULL, " +
+            "`validSeconds` REAL NOT NULL, `coverage` REAL NOT NULL, `clockCorrections` INTEGER NOT NULL, " +
+            "`orig_laeq_db` REAL, `orig_lafmax_db` REAL, `orig_lafmin_db` REAL, `orig_l1_db` REAL, `orig_l10_db` REAL, " +
+            "`orig_l50_db` REAL, `orig_l90_db` REAL, `recalibrated_from_id` TEXT, `recalibration_offset_db` REAL)"
+
+    /** v4 `events` table, exactly as Room generates it (verified by a unit test). */
+    const val CREATE_EVENTS_V4 =
+        "CREATE TABLE IF NOT EXISTS `events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startEpochMs` INTEGER NOT NULL, " +
+            "`startIso` TEXT NOT NULL, `durationSeconds` REAL NOT NULL, `lafMaxDb` REAL NOT NULL, `selDb` REAL NOT NULL, " +
+            "`backgroundDb` REAL NOT NULL, `thresholdDb` REAL NOT NULL, `dominantCategory` TEXT, `dominantScore` REAL NOT NULL, " +
+            "`topLabelsJson` TEXT NOT NULL, `classifierFrames` INTEGER NOT NULL, `calibrationId` INTEGER, " +
+            "`audioSource` TEXT NOT NULL, `calibrated` INTEGER NOT NULL, `min_level_db` REAL, " +
+            "`orig_lafmax_db` REAL, `orig_sel_db` REAL, `orig_background_db` REAL, `recalibrated_from_id` TEXT, " +
+            "`recalibration_offset_db` REAL)"
+
+    /**
+     * v3 → v4: re-evaluation of stored data with a later calibration. Minutes and events keep their
+     * original level values (orig_*) and the calibration they were measured with
+     * (recalibrated_from_id, recalibration_offset_db). All NULL until a record is re-evaluated.
+     */
+    val MIGRATE_3_4: List<String> =
+        listOf("orig_laeq_db", "orig_lafmax_db", "orig_lafmin_db", "orig_l1_db", "orig_l10_db", "orig_l50_db", "orig_l90_db")
+            .map { "ALTER TABLE `minutes` ADD COLUMN `$it` REAL" } +
+            listOf(
+                "ALTER TABLE `minutes` ADD COLUMN `recalibrated_from_id` TEXT",
+                "ALTER TABLE `minutes` ADD COLUMN `recalibration_offset_db` REAL",
+            ) +
+            listOf("orig_lafmax_db", "orig_sel_db", "orig_background_db").map { "ALTER TABLE `events` ADD COLUMN `$it` REAL" } +
+            listOf(
+                "ALTER TABLE `events` ADD COLUMN `recalibrated_from_id` TEXT",
+                "ALTER TABLE `events` ADD COLUMN `recalibration_offset_db` REAL",
+            )
+}
+
+/**
+ * Records a re-evaluation with a calibration changes: same audio source, measured without or with
+ * another calibration — the SQL form of `Recalibration.inScope` (checked by a unit test).
+ */
+object RecalibrationSql {
+    const val SCOPE = "audioSource = :source AND (calibrationId IS NULL OR calibrationId != :calibrationId)"
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -63,5 +110,11 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
         MigrationSql.MIGRATE_2_3.forEach { db.execSQL(it) }
+    }
+}
+
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        MigrationSql.MIGRATE_3_4.forEach { db.execSQL(it) }
     }
 }

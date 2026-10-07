@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.2 — 2026-10-07
+
+The event floor follows the calibration, and old measurements can be re-evaluated with a new
+calibration.
+
+- **Event floor follows the calibration.** When a calibration is saved and becomes active for this
+  device and audio source (also «Auf Standard»), the floor «Mindestpegel für Ereignisse» moves by
+  the change of the offset (new − previous, the default if none was active), rounded to 0.5 dB and
+  limited to 20–70 dB(A). The calibration screen confirms it: «Kalibrierung gespeichert. Offset
+  +9.6 dB gegenüber vorher; der Mindestpegel für Ereignisse wurde von 30.0 auf 39.5 dB(A)
+  angepasst.» The setting now moves in 0.5 dB steps and is shown with one decimal.
+- **Re-evaluate old measurements («nachträglich kalibriert»).** After saving a calibration the app
+  offers to re-evaluate earlier minutes and events with the same audio source that were measured
+  without or with another calibration (dialog «Neu bewerten» / «Nicht jetzt»; also «Daten → Alte
+  Messungen neu bewerten»). All level columns move by (new − original offset); the original values
+  are kept (`orig_*`, `recalibrated_from_id`, `recalibration_offset_db`) and later re-evaluations
+  always start from them, so corrections never compound. Runs in the background with a progress
+  bar, in one transaction. `event_count` stays as recorded (the night list and the chart apply the
+  current floor at read time).
+- Re-evaluated data counts as calibrated; the night list and the chart summary note «nachträglich
+  kalibriert», and so does the chart tooltip.
+- CSV export: the new columns are appended to both files (earlier columns unchanged).
+- Database v4 (migration adds the nullable re-evaluation columns to `minutes` and `events`).
+
 ## 0.3.1 — 2026-10-07
 
 Update check that keeps the app without any internet permission.

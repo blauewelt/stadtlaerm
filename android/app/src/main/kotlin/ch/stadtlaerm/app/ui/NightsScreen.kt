@@ -88,7 +88,7 @@ fun NightsScreen(modifier: Modifier = Modifier, vm: HistoryViewModel = viewModel
             Text(
                 "Nachtzeit 22:00–06:00 (Ortszeit; bei Zeitumstellung 7 bzw. 9 h). Pegel energetisch gemittelt über die " +
                     "gültige Messzeit; Minuten mit weniger als 50 % gültigem Signal (z. B. Mikrofon durch Anruf stummgeschaltet) werden nicht gewertet. " +
-                    "Ereignisse zählen ab ${settings.eventMinLevelDb.toInt()} dB(A) (Einstellungen). Tippen zeigt die Nacht in der Grafik.",
+                    "Ereignisse zählen ab ${Fmt.db(settings.eventMinLevelDb, 1)} dB(A) (Einstellungen). Tippen zeigt die Nacht in der Grafik.",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
@@ -134,6 +134,12 @@ private fun NightCard(n: NightSummary, onClick: () -> Unit) {
             }
         }
         StatRow("Nacht-LAeq", "${Fmt.db(n.laeqDb)} dB(A)" + if (n.allCalibrated) "" else " (unkalibriert)")
+        if (n.anyRecalibrated) {
+            Text(
+                "nachträglich kalibriert", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         StatRow("Gültig gemessen", "${Fmt.duration(n.measuredSeconds)} von ${Fmt.duration(n.nominalSeconds)} (${Fmt.percent(n.coverage)})")
         if (n.excludedMinutes > 0) {
             StatRow("Nicht gewertete Minuten (< 50 % gültig)", n.excludedMinutes.toString())

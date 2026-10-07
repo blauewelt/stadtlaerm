@@ -22,6 +22,9 @@ object Csv {
         ) + bucketIds.map { "share_$it" } + listOf(
             "classifier_frames", "calibration_id", "calibration_offset_db", "audio_source", "calibrated",
             "clock_corrections",
+            // v0.3.2: original values of minutes re-evaluated with a later calibration (appended).
+            "orig_laeq_db", "orig_lafmax_db", "orig_lafmin_db", "orig_l1_db", "orig_l10_db", "orig_l50_db", "orig_l90_db",
+            "recalibrated_from_id", "recalibration_offset_db",
         )
         sb.append(header.joinToString(",")).append("\n")
         for (r in records) {
@@ -32,7 +35,10 @@ object Csv {
             ) + bucketIds.map { id -> r.categoryShares[id]?.let { num(it, 3) } ?: "" } + listOf(
                 r.classifierFrames.toString(), r.calibrationId?.toString() ?: "", num(r.calibrationOffsetDb, 2),
                 field(r.audioSource), r.calibrated.toString(), r.clockCorrections.toString(),
-            )
+            ) + r.original.let { o ->
+                if (o == null) List(7) { "" }
+                else listOf(num(o.laeqDb), num(o.lafMaxDb), num(o.lafMinDb), num(o.l1Db), num(o.l10Db), num(o.l50Db), num(o.l90Db))
+            } + listOf(field(r.recalibratedFromId), r.recalibrationOffsetDb?.let { num(it, 2) } ?: "")
             sb.append(row.joinToString(",")).append("\n")
         }
         return sb.toString()
@@ -46,6 +52,8 @@ object Csv {
                 "dominant_category", "dominant_score",
                 "label1", "score1", "label2", "score2", "label3", "score3",
                 "classifier_frames", "calibration_id", "audio_source", "calibrated",
+                // v0.3.2 (appended): see minutes().
+                "orig_lafmax_db", "orig_sel_db", "orig_background_db", "recalibrated_from_id", "recalibration_offset_db",
             ).joinToString(",")
         ).append("\n")
         for (e in events) {
@@ -59,7 +67,9 @@ object Csv {
             ) + labels + listOf(
                 e.classifierFrames.toString(), e.calibrationId?.toString() ?: "", field(e.audioSource),
                 e.calibrated.toString(),
-            )
+            ) + e.original.let { o ->
+                if (o == null) List(3) { "" } else listOf(num(o.lafMaxDb), num(o.selDb), num(o.backgroundDb))
+            } + listOf(field(e.recalibratedFromId), e.recalibrationOffsetDb?.let { num(it, 2) } ?: "")
             sb.append(row.joinToString(",")).append("\n")
         }
         return sb.toString()

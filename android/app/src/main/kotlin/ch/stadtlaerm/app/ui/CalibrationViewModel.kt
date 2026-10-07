@@ -11,6 +11,11 @@ import ch.stadtlaerm.dsp.Acoustics
 import ch.stadtlaerm.dsp.calibration.CalibrationMath
 import ch.stadtlaerm.dsp.calibration.CalibrationResult
 import ch.stadtlaerm.dsp.calibration.CalibrationWarning
+import ch.stadtlaerm.dsp.calibration.EventFloor
+import ch.stadtlaerm.dsp.calibration.Recalibration
+import ch.stadtlaerm.app.data.AppSettings
+import ch.stadtlaerm.app.data.Recalibrator
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,9 +38,17 @@ data class CalUiState(
     val calibratorNominalDb: Double = 94.0,
     val noiseFloorDb: Double? = null,
     val message: String? = null,
+    /** After saving a calibration: offer to re-evaluate earlier measurements with it. */
+    val recalOffer: RecalOffer? = null,
 )
 
+data class RecalOffer(val target: Recalibration.Target, val minutes: Int, val events: Int)
+
 class CalibrationViewModel(app: Application) : AndroidViewModel(app) {
+    private companion object {
+        const val SAVED = "Kalibrierung gespeichert."
+    }
+
     private val c = app.container
     val source: String = AudioSourceSelector.select(app)
     val deviceModel: String = ch.stadtlaerm.app.data.CalibrationRepository.deviceModel
@@ -159,42 +172,87 @@ class CalibrationViewModel(app: Application) : AndroidViewModel(app) {
     fun calibratorWarnings(): List<CalibrationWarning> =
         _state.value.calibratorResult?.let { CalibrationMath.calibratorWarnings(it, _state.value.calibratorNominalDb) } ?: emptyList()
 
+    /** Offset the engine would use now for this source: the active calibration's, else the default. */
+    private suspend fun currentOffset(): Double = c.calibrations.active(source).offsetDb
+
+    /**
+     * A calibration with [newOffset] has just become active (previously [previousOffset]): the
+     * event floor follows it (see [EventFloor]); for a real calibration, offer to re-evaluate
+     * earlier measurements. [prefix] is the first sentence of the confirmation.
+     */
+    private suspend fun activated(prefix: String, id: Long, previousOffset: Double, newOffset: Double, calibrated: Boolean) {
+        var adjustment: EventFloor.Adjustment? = null
+        c.settings.update { s ->
+            val a = EventFloor.adjust(s.eventMinLevelDb, previousOffset, newOffset, AppSettings.EVENT_MIN_LEVEL_MIN, AppSettings.EVENT_MIN_LEVEL_MAX)
+            adjustment = a
+            s.copy(eventMinLevelDb = a.newFloorDb)
+        }
+        val offer = if (calibrated) {
+            val target = Recalibration.Target(id, newOffset, source)
+            val (minutes, events) = c.recalibrator.counts(target).first()
+            if (minutes + events > 0) RecalOffer(target, minutes, events) else null
+        } else null
+        _state.update { it.copy(message = CalibrationTexts.floorFollowed(prefix, adjustment!!), recalOffer = offer) }
+    }
+
     fun saveReference(referenceDb: Double, notes: String) = viewModelScope.launch {
         val r = _state.value.referenceResult ?: return@launch
         val offset = CalibrationMath.referenceOffset(referenceDb, r.rawLaeqDb)
+        val previous = currentOffset()
         val id = c.calibrations.save(
             source, offset, CalibrationEntity.METHOD_REFERENCE, notes,
             referenceDb = referenceDb, measuredRawDb = r.rawLaeqDb, stdDevDb = r.stdDevDb,
             durationSeconds = r.measuredSeconds, warnings = referenceWarnings(referenceDb).map { it.name },
         )
-        _state.value = _state.value.copy(referenceResult = null, message = "Kalibrierung #$id gespeichert: Offset ${Fmt.db(offset, 2)} dB")
+        _state.update { it.copy(referenceResult = null) }
+        activated(SAVED, id, previous, offset, calibrated = true)
     }
 
     fun saveCalibrator(notes: String) = viewModelScope.launch {
         val r = _state.value.calibratorResult ?: return@launch
         val nominal = _state.value.calibratorNominalDb
         val offset = CalibrationMath.calibratorOffset(nominal, r.rawLaeqDb)
+        val previous = currentOffset()
         val id = c.calibrations.save(
             source, offset, CalibrationEntity.METHOD_CALIBRATOR, notes,
             measuredRawDb = r.rawLaeqDb, stdDevDb = r.stdDevDb, durationSeconds = r.measuredSeconds,
             calibratorNominalDb = nominal, toneFrequencyHz = r.toneFrequencyHz, tonality = r.tonality,
             warnings = calibratorWarnings().map { it.name },
         )
-        _state.value = _state.value.copy(calibratorResult = null, message = "Kalibrierung #$id gespeichert: Offset ${Fmt.db(offset, 2)} dB")
+        _state.update { it.copy(calibratorResult = null) }
+        activated(SAVED, id, previous, offset, calibrated = true)
     }
 
     fun saveManual(offsetDb: Double, notes: String) = viewModelScope.launch {
+        val previous = currentOffset()
         val id = c.calibrations.save(
             source, offsetDb, CalibrationEntity.METHOD_MANUAL, notes,
             warnings = if (CalibrationMath.implausible(offsetDb)) listOf(CalibrationWarning.IMPLAUSIBLE_OFFSET.name) else emptyList(),
         )
-        _state.value = _state.value.copy(message = "Kalibrierung #$id gespeichert: Offset ${Fmt.db(offsetDb, 2)} dB")
+        activated(SAVED, id, previous, offsetDb, calibrated = true)
     }
 
     fun resetToDefault() = viewModelScope.launch {
-        c.calibrations.save(source, Acoustics.DEFAULT_CALIBRATION_OFFSET_DB, CalibrationEntity.METHOD_RESET, "Zurückgesetzt auf CDD-Standard")
-        _state.value = _state.value.copy(message = "Auf Standard-Offset zurückgesetzt (unkalibriert).")
+        val previous = currentOffset()
+        val id = c.calibrations.save(source, Acoustics.DEFAULT_CALIBRATION_OFFSET_DB, CalibrationEntity.METHOD_RESET, "Zurückgesetzt auf CDD-Standard")
+        // Back to uncalibrated: the floor follows, but nothing is re-evaluated (that would mark
+        // uncalibrated data as calibrated).
+        activated("Auf Standard-Offset zurückgesetzt (unkalibriert).", id, previous, Acoustics.DEFAULT_CALIBRATION_OFFSET_DB, calibrated = false)
     }
+
+    // ---- Re-evaluating earlier measurements ----------------------------------------------------
+
+    val recalibration: StateFlow<Recalibrator.State> = c.recalibrator.state
+
+    fun confirmRecalibration() {
+        val offer = _state.value.recalOffer ?: return
+        _state.update { it.copy(recalOffer = null) }
+        c.recalibrator.start(offer.target)
+    }
+
+    fun dismissRecalibration() { _state.update { it.copy(recalOffer = null) } }
+
+    fun acknowledgeRecalibration() = c.recalibrator.acknowledge()
 
     suspend fun exportHistory(): File = withContext(Dispatchers.IO) {
         val dir = File(getApplication<Application>().cacheDir, "exports").apply { mkdirs() }

@@ -364,7 +364,7 @@ fun tooltipLines(s: Selection, model: ChartModel): List<String> {
                 add("LAeq ${ChartFmt.db(p.laeq)} dB(A)")
                 add("LAFmax ${ChartFmt.db(p.lafMax)} dB(A)")
                 add("L10 / L90 ${ChartFmt.db(p.l10)} / ${ChartFmt.db(p.l90)} dB(A)")
-                if (!p.calibrated) add("unkalibriert")
+                if (!p.calibrated) add("unkalibriert") else if (p.recalibrated) add(RECALIBRATED)
             }
         }
         is Selection.Event -> {
@@ -375,7 +375,7 @@ fun tooltipLines(s: Selection, model: ChartModel): List<String> {
                 add("Dauer ${ChartFmt.duration(e.durationSeconds)}")
                 add("Hintergrund ${ChartFmt.db(e.backgroundDb)} dB(A)")
                 e.topLabels.firstOrNull()?.let { add("Erkannt: ${it.label}") }
-                if (!e.calibrated) add("unkalibriert")
+                if (!e.calibrated) add("unkalibriert") else if (e.recalibrated) add(RECALIBRATED)
             }
         }
         is Selection.NoData -> listOf(fmt.hm(s.timeMs), "keine Messung")

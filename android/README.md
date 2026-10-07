@@ -1,4 +1,4 @@
-# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.1)
+# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.2)
 
 Stadtlärm turns an Android phone into a night-time noise logger. It measures A-weighted
 sound levels the way a sound level meter does (IEC 61672-1 A-weighting, Fast time weighting),
@@ -41,13 +41,23 @@ distant highway passes peaked at a median of 37 dB(A), about 13 dB above a 20 dB
 floor is discarded and not counted in the minute's `event_count`. The floor in force is stored
 with every event (`min_level_db`). Events recorded before v0.3.0 have none; the night list and the
 chart apply the *current* floor to all stored events, so they always agree. With an uncalibrated
-phone the floor is only approximate, like every level.
+phone the floor is only approximate, like every level. When a calibration is saved, the floor
+moves with the offset (see "Calibration" below).
 
 Every minute record stores: start (ISO-8601 with zone offset), duration, LAeq, LAFmax,
 LAFmin, L1, L10, L50, L90, event count, dominant source category, time share per category,
 calibration id and offset, audio source and the calibrated flag. Every event stores start,
 duration, LAFmax, SEL, background level, threshold, dominant category and score, and the top-3
-raw AudioSet labels with scores, and the event floor in force.
+raw AudioSet labels with scores, and the event floor in force. Since v0.3.2 both also keep the
+original levels when they are re-evaluated with a later calibration (see "Re-evaluating old
+measurements").
+
+**What `event_count` means.** A minute's `event_count` is the number of events that *started* in
+that minute and passed the floor in force *when it was measured*. It is never recomputed: neither
+when the floor setting changes nor when the minute is re-evaluated with a new calibration. The
+night list and the chart do not use it; they count the stored events with the *current* floor at
+read time, so a raised floor shows fewer events there while `event_count` in the CSV stays as
+recorded.
 
 ## Chart
 
@@ -155,7 +165,7 @@ validated on many devices — see "Status" below.
 The app has no internet permission, so it cannot look for updates itself, and this stays so.
 Instead:
 
-- **Einstellungen → App-Version** shows «Stadtlärm 0.3.1 (Build vom 7.10.2026)» and a button
+- **Einstellungen → App-Version** shows «Stadtlärm 0.3.2 (Build vom 7.10.2026)» and a button
   **Nach Update suchen**. It opens
   `https://stadtlaerm.ch/update.html#v=<versionName>&c=<versionCode>` in the browser. The page
   ([docs/update.html](../docs/update.html)) carries the published version as
@@ -242,11 +252,71 @@ meaningful. Many phones bottom out somewhere around 30–40 dB(A) (to be confirm
 
 The calibration history can be exported as JSON (Kalibrieren → Als JSON exportieren).
 
+The active calibration is always the most recent one for this device and audio source; there is no
+way to pick an older one from the history (save it again as a manual offset instead).
+
+### The event floor follows the calibration
+
+The event floor («Mindestpegel», an absolute LAFmax) is chosen on the levels you see. Levels are
+`raw + offset`, so a new offset shifts every level, and a floor tuned on uncalibrated data (default
+offset 112.35 dB) would filter a different set of sounds after calibrating (a real calibration
+typically moves the offset by +5 to +15 dB). Therefore, whenever a calibration is saved and becomes
+active for the current device and audio source (all three methods, and **Auf Standard**), the app
+sets
+
+```
+floor_new = round_0.5(floor_old + (offset_new − offset_previous))     clamped to 20–70 dB(A)
+```
+
+where `offset_previous` is the offset the measurement would have used until then (the default if no
+calibration was active). The calibration screen confirms it, e.g. «Kalibrierung gespeichert. Offset
++9.6 dB gegenüber vorher; der Mindestpegel für Ereignisse wurde von 30.0 auf 39.5 dB(A)
+angepasst.»; if the range limit bites, the message says so and gives the unclamped value. The
+setting moves in 0.5 dB steps. The arithmetic is pure Kotlin (`EventFloor` in
+`dsp/.../calibration/Recalibration.kt`) with unit tests.
+
+### Re-evaluating old measurements («nachträglich kalibriert»)
+
+For the same phone and the same audio source, a level stored with offset O1 corresponds under a
+new offset O2 to `level − O1 + O2`. So measurements made before a calibration (or with an older
+one) can be corrected afterwards:
+
+- After saving a calibration the app asks «Frühere Messungen mit dieser Kalibrierung neu bewerten?
+  Betrifft n Minuten und m Ereignisse …» (**Neu bewerten** / **Nicht jetzt**). The same action is in
+  **Daten → Alte Messungen neu bewerten** (disabled, with the reason, when no calibration is active,
+  nothing qualifies, or a measurement is running). Nothing happens automatically.
+- **Scope:** minutes and events with the same audio source (`UNPROCESSED` and `VOICE_RECOGNITION`
+  are calibrated separately) whose `calibration_id` differs from the new calibration's (including
+  data measured without a calibration). Measurements are only ever made on this phone, so the device
+  model matches.
+- **Update:** every level column (minutes: LAeq, LAFmax, LAFmin, L1, L10, L50, L90; events:
+  LAFmax, SEL, background) is shifted by `new offset − offset of the original measurement`;
+  `calibrated` becomes true, `calibration_id`/`calibration_offset_db` are those of the new
+  calibration. Event threshold (relative to the background), the stored floor `min_level_db` (the
+  floor in force at the time, on the original scale) and `event_count` stay as recorded.
+- **Originals are kept and corrections never compound:** the first re-evaluation copies the stored
+  levels into `orig_*` and records the calibration they were measured with in
+  `recalibrated_from_id` (its id, or `default`) and `recalibration_offset_db`. Every later
+  re-evaluation computes from `orig_*` and leaves these three as they are, so A→B→C gives exactly
+  the same values as A→C. Events store no offset of their own; theirs is the offset of their
+  calibration (or the default).
+- It runs in the background with a progress bar, in one database transaction (all or nothing,
+  in batches of 500 rows).
+- **Marking:** re-evaluated data counts as calibrated, so the «unkalibriert» badge disappears. The
+  night list and the chart summary show «nachträglich kalibriert» when any minute of the night or
+  window was re-evaluated, and the chart tooltip says «nachträglich kalibriert» instead of
+  «unkalibriert».
+
 ## Data export
 
 **Daten → CSV exportieren & teilen** creates two UTF-8 CSV files (minutes, events) with a
 `.` decimal separator and ISO-8601 timestamps with zone offset, and hands them to the Android
 share sheet. Column names are in the first row (`laeq_db`, `lafmax_db`, `share_loud_vehicle`, …).
+Since v0.3.2 both files end with the re-evaluation columns (appended, the earlier columns keep
+their order): minutes `orig_laeq_db`, `orig_lafmax_db`, `orig_lafmin_db`, `orig_l1_db`,
+`orig_l10_db`, `orig_l50_db`, `orig_l90_db`, events `orig_lafmax_db`, `orig_sel_db`,
+`orig_background_db`, and in both `recalibrated_from_id`, `recalibration_offset_db`. They are empty
+for data that was never re-evaluated.
 
 ## Known limitations
 
@@ -287,11 +357,13 @@ share sheet. Column names are in the first row (`laeq_db`, `lafmax_db`, `share_l
 - Settings changes (including the classifier level adjustment) apply from the next start of a measurement.
 - Calibration must be done with the app in the foreground; leaving the app aborts the measurement.
 
-## Status of v0.3.1
+## Status of v0.3.2
 
-v0.3.1 is a public **test version**: v0.3.0 (chart, event floor) plus the update check without
-internet permission (see [CHANGELOG](CHANGELOG.md)). The update card and reminder are built and
-their logic is unit-tested, but they have not been tried on a phone yet.
+v0.3.2 is a public **test version**: v0.3.1 (chart, event floor, update check without internet
+permission) plus an event floor that follows the calibration and the re-evaluation of old
+measurements with a new calibration (see [CHANGELOG](CHANGELOG.md)). The arithmetic, the database
+migration (v3 → v4) and the CSV columns are unit-tested on the JVM; the dialogs, the progress bar
+and the update check have not been tried on a phone yet.
 
 - The chart is verified with JVM unit tests and JVM renders (Paparazzi) in light and dark mode,
   with synthetic data and with a real night; touch gestures and performance have not yet been

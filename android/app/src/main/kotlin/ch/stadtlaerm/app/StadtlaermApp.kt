@@ -5,10 +5,14 @@ import android.content.Context
 import ch.stadtlaerm.app.data.AppDatabase
 import ch.stadtlaerm.app.data.CalibrationRepository
 import ch.stadtlaerm.app.data.MeasurementRepository
+import ch.stadtlaerm.app.data.Recalibrator
 import ch.stadtlaerm.app.data.SettingsStore
 import ch.stadtlaerm.app.service.LiveState
 import ch.stadtlaerm.app.update.UpdateReminderStore
 import ch.stadtlaerm.dsp.classify.CategoryMapper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class StadtlaermApp : Application() {
@@ -29,6 +33,9 @@ class AppContainer(context: Context) {
     val calibrations: CalibrationRepository by lazy { CalibrationRepository(db.calibrations()) }
     val measurements: MeasurementRepository by lazy { MeasurementRepository(db.measurements()) }
     val updateReminder: UpdateReminderStore by lazy { UpdateReminderStore(appContext) }
+    /** For work that must outlive a screen (re-evaluating old measurements). */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val recalibrator: Recalibrator by lazy { Recalibrator(db, appScope) }
     val live = MutableStateFlow(LiveState())
     /** True while the calibration screen is using the microphone (blocks starting a measurement). */
     val calibrationActive = MutableStateFlow(false)

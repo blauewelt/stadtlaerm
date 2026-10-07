@@ -32,6 +32,8 @@ data class NightSummary(
     val eventsPerHour: Double = Double.NaN,
     /** "Dynamik": median over the valid minutes of L10 − L90 (dB); NaN without valid minutes. */
     val dynamicsDb: Double = Double.NaN,
+    /** True if any minute of the night was re-evaluated with a later calibration («nachträglich kalibriert»). */
+    val anyRecalibrated: Boolean = false,
 ) {
     /** Share of the night covered by valid audio (0…1). */
     val coverage: Double get() = if (nominalSeconds > 0) (measuredSeconds / nominalSeconds).coerceIn(0.0, 1.0) else 0.0
@@ -130,6 +132,7 @@ object NightSummarizer {
                 excludedMinutes = allMinutes.size - ms.size,
                 eventsPerHour = Dynamics.eventsPerHour(evs.size, dur),
                 dynamicsDb = Dynamics.medianSpread(ms),
+                anyRecalibrated = allMinutes.any { it.recalibrated },
             )
         }
     }

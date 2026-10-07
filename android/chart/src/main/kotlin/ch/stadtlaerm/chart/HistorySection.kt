@@ -140,13 +140,13 @@ fun HistorySection(
                 }
                 if (model != null && model.eventsCapped) {
                     Text(
-                        "Wochenansicht: Stundenwerte; gezeichnet sind nur die ${ChartModel.WEEK_EVENT_CAP} lautesten Ereignisse der hervorgehobenen Kategorie ab ${ChartFmt.db(maxOf(eventFloorDb, ChartModel.WEEK_EVENT_MIN_DB), 0)} dB(A).",
+                        "Wochenansicht: Stundenwerte; gezeichnet sind nur die ${ChartModel.WEEK_EVENT_CAP} lautesten Ereignisse der hervorgehobenen Kategorie ab ${ChartFmt.dbCompact(maxOf(eventFloorDb, ChartModel.WEEK_EVENT_MIN_DB))} dB(A).",
                         style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant,
                     )
                 } else if (window.mode == RangeMode.WEEK) {
                     Text(
                         "Wochenansicht: Stundenwerte; gezeichnet sind nur Ereignisse der hervorgehobenen Kategorie ab " +
-                            "${ChartFmt.db(maxOf(eventFloorDb, ChartModel.WEEK_EVENT_MIN_DB), 0)} dB(A).",
+                            "${ChartFmt.dbCompact(maxOf(eventFloorDb, ChartModel.WEEK_EVENT_MIN_DB))} dB(A).",
                         style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant,
                     )
                 }
@@ -199,6 +199,13 @@ fun HistorySection(
                 s.line(), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = margin),
             )
+            // Own line: appended to the summary line it could wrap with a leading «·».
+            if (s.anyRecalibrated) {
+                Text(
+                    "Pegel $RECALIBRATED (Kalibrierung nach der Messung)", style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = margin),
+                )
+            }
         }
     }
 }

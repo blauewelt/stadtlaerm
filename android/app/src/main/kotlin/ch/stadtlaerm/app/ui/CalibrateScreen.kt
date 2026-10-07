@@ -36,7 +36,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ch.stadtlaerm.app.audio.AudioSourceSelector
+import ch.stadtlaerm.app.container
 import ch.stadtlaerm.app.data.CalibrationEntity
+import ch.stadtlaerm.app.data.Recalibrator
 import ch.stadtlaerm.dsp.Acoustics
 import ch.stadtlaerm.dsp.calibration.CalibrationMath
 import ch.stadtlaerm.dsp.calibration.CalibrationWarning
@@ -67,6 +69,8 @@ fun CalibrateScreen(modifier: Modifier = Modifier, vm: CalibrationViewModel = vi
     val state by vm.state.collectAsStateWithLifecycle()
     val active by vm.active.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
+    val recal by vm.recalibration.collectAsStateWithLifecycle()
+    val live by context.container.live.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var pendingMode by remember { mutableStateOf<CalMode?>(null) }
     val requestPermission = rememberMicPermissionLauncher { granted -> if (granted) pendingMode?.let { vm.start(it) } }
@@ -114,6 +118,11 @@ fun CalibrateScreen(modifier: Modifier = Modifier, vm: CalibrationViewModel = vi
                     Text(msg, style = MaterialTheme.typography.bodyMedium)
                     TextButton(onClick = { vm.clearMessage() }) { Text("OK") }
                 }
+            }
+        }
+        if (recal !is Recalibrator.State.Idle) {
+            item {
+                SectionCard("Frühere Messungen neu bewerten") { RecalibrationStatus(recal) { vm.acknowledgeRecalibration() } }
             }
         }
         if (busy) {
@@ -253,5 +262,12 @@ fun CalibrateScreen(modifier: Modifier = Modifier, vm: CalibrationViewModel = vi
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
+    }
+
+    state.recalOffer?.let { offer ->
+        RecalibrationDialog(
+            minutes = offer.minutes, events = offer.events, measuring = live.running || live.starting,
+            onConfirm = { vm.confirmRecalibration() }, onDismiss = { vm.dismissRecalibration() },
+        )
     }
 }

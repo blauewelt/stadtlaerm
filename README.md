@@ -5,7 +5,7 @@ Anwohnern für Anwohnerinnen und Anwohner, beginnend in Zürich. Eine Android-Ap
 Schallpegel durchgehend, auch nachts, hält laute Einzelereignisse (z. B. Töffs, Poser) mit Zeit,
 Spitzenpegel und wahrscheinlicher Quelle fest, fasst jede Nacht von 22 bis 6 Uhr zusammen, zeigt
 den Verlauf als Grafik und exportiert die Daten als CSV. Es wird nie Audio gespeichert oder übertragen, und die App hat
-keine Internet-Berechtigung. Die App ist eine Testversion (v0.3.1), ein fest montierter
+keine Internet-Berechtigung. Die App ist eine Testversion (v0.3.2), ein fest montierter
 Fenstersensor ist in Entwicklung. Download und Anleitung: [stadtlaerm.ch](https://stadtlaerm.ch).
 
 Stadtlärm is an open road-noise measurement network run by residents for residents, starting in
@@ -32,8 +32,10 @@ source classification runs on the phone and only levels and statistics are kept.
 
 ## Status
 
-- **Phone app v0.3.1:** public test version with a night/day/week chart of the measurements and
-  an update check that runs in the browser (the app itself still has no internet permission).
+- **Phone app v0.3.2:** public test version with a night/day/week chart of the measurements, an
+  event floor that follows the calibration, re-evaluation of old measurements with a new
+  calibration, and an update check that runs in the browser (the app itself still has no internet
+  permission).
   It passes its JVM unit tests and JVM renders but is not yet validated on many devices. Download at
   [stadtlaerm.ch](https://stadtlaerm.ch); changes in [android/CHANGELOG.md](android/CHANGELOG.md).
 - **Windowsill sensor:** planned, see [firmware/README.md](firmware/README.md).

@@ -12,6 +12,9 @@ import kotlin.math.floor
 import kotlin.math.log10
 import kotlin.math.pow
 
+/** Note for data re-evaluated with a calibration made after the measurement. */
+const val RECALIBRATED = "nachträglich kalibriert"
+
 /** Raw data of one window as loaded from the database. */
 data class ChartData(
     val window: TimeWindow,
@@ -40,6 +43,8 @@ data class SeriesPoint(
     val calibrated: Boolean,
     /** Valid seconds in this sample. */
     val validSeconds: Double,
+    /** Re-evaluated with a later calibration («nachträglich kalibriert»; any minute of an hour). */
+    val recalibrated: Boolean = false,
 ) {
     val midMs: Long get() = startMs + (endMs - startMs) / 2
 }
@@ -75,6 +80,8 @@ data class WindowSummary(
     val eventsPerHour: Double = Double.NaN,
     /** Median over valid minutes of L10 − L90. */
     val dynamicsDb: Double = Double.NaN,
+    /** Any minute of the window re-evaluated with a later calibration (shown as its own line under [line]). */
+    val anyRecalibrated: Boolean = false,
 ) {
     /** «Messung 76 % der Zeit · 48 Ereignisse/h · Dynamik L10−L90 5,5 dB · unterbrochen …» */
     fun line(maxGaps: Int = 2): String {
@@ -191,7 +198,7 @@ class ChartModel(
                 if (valid) maxOf(m.l10Db, m.l90Db) else Double.NaN,
                 if (valid) minOf(m.l10Db, m.l90Db) else Double.NaN,
                 if (valid) m.lafMaxDb else Double.NaN,
-                valid, m.calibrated, if (valid) m.validSeconds else 0.0,
+                valid, m.calibrated, if (valid) m.validSeconds else 0.0, m.recalibrated,
             )
         }
 
@@ -215,7 +222,10 @@ class ChartModel(
                 val e = minOf(s + Windows.HOUR_MS, w.endMs)
                 val valid = buckets[i].filter { isValid(it) }
                 if (valid.size < MIN_VALID_MINUTES_PER_HOUR) {
-                    out += SeriesPoint(s, e, Double.NaN, Double.NaN, Double.NaN, Double.NaN, false, buckets[i].all { it.calibrated }, 0.0)
+                    out += SeriesPoint(
+                        s, e, Double.NaN, Double.NaN, Double.NaN, Double.NaN, false, buckets[i].all { it.calibrated }, 0.0,
+                        buckets[i].any { it.recalibrated },
+                    )
                     continue
                 }
                 var energy = 0.0
@@ -228,6 +238,7 @@ class ChartModel(
                     l90 = valid.minOf { minOf(it.l10Db, it.l90Db) },
                     lafMax = valid.maxOf { it.lafMaxDb },
                     valid = true, calibrated = valid.all { it.calibrated }, validSeconds = secs,
+                    recalibrated = valid.any { it.recalibrated },
                 )
             }
             return out
@@ -303,6 +314,7 @@ class ChartModel(
                 anyUncalibrated = minutes.any { !it.calibrated },
                 eventsPerHour = ch.stadtlaerm.dsp.Dynamics.eventsPerHour(floored.size, secs),
                 dynamicsDb = ch.stadtlaerm.dsp.Dynamics.medianSpread(valid),
+                anyRecalibrated = minutes.any { it.recalibrated },
             )
         }
 
@@ -365,6 +377,8 @@ object ChartFmt {
     private val locale = Locale("de", "CH")
     fun db(v: Double, decimals: Int = 1): String =
         if (v.isNaN() || v.isInfinite()) "–" else String.format(locale, "%.${decimals}f", v)
+    /** «60», «62.5»: whole values without decimals (the event floor moves in 0.5 dB steps). */
+    fun dbCompact(v: Double): String = db(v, if (v % 1.0 == 0.0) 0 else 1)
     fun percent(v: Double): String = String.format(locale, "%.0f %%", v * 100)
     /** German decimal comma («5,5»), for the dynamics figures. */
     fun comma(v: Double, decimals: Int): String =

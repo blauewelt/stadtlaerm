@@ -11,6 +11,9 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Update
+import ch.stadtlaerm.dsp.EventLevels
+import ch.stadtlaerm.dsp.MinuteLevels
 import ch.stadtlaerm.dsp.MinuteRecord
 import ch.stadtlaerm.dsp.NoiseEvent
 import ch.stadtlaerm.dsp.classify.LabelScore
@@ -55,6 +58,19 @@ data class MinuteEntity(
     /** validSeconds / durationSeconds. */
     val coverage: Double,
     val clockCorrections: Int,
+    // v4 (v0.3.2): re-evaluation with a later calibration («nachträglich kalibriert»). The first
+    // re-evaluation copies the level columns into orig_*; later ones always compute from orig_*.
+    @ColumnInfo(name = "orig_laeq_db") val origLaeqDb: Double? = null,
+    @ColumnInfo(name = "orig_lafmax_db") val origLafMaxDb: Double? = null,
+    @ColumnInfo(name = "orig_lafmin_db") val origLafMinDb: Double? = null,
+    @ColumnInfo(name = "orig_l1_db") val origL1Db: Double? = null,
+    @ColumnInfo(name = "orig_l10_db") val origL10Db: Double? = null,
+    @ColumnInfo(name = "orig_l50_db") val origL50Db: Double? = null,
+    @ColumnInfo(name = "orig_l90_db") val origL90Db: Double? = null,
+    /** Calibration id (or "default") the orig_* values were measured with; null if never re-evaluated. */
+    @ColumnInfo(name = "recalibrated_from_id") val recalibratedFromId: String? = null,
+    /** Offset the orig_* values were measured with. */
+    @ColumnInfo(name = "recalibration_offset_db") val recalibrationOffsetDb: Double? = null,
 )
 
 @Entity(tableName = "events", indices = [Index("startEpochMs")])
@@ -77,6 +93,13 @@ data class EventEntity(
     val calibrated: Boolean,
     /** LAFmax floor in force when the event was detected (v3); null for events from before v0.3.0. */
     @ColumnInfo(name = "min_level_db") val minLevelDb: Double? = null,
+    // v4 (v0.3.2): see MinuteEntity. Events store no offset of their own; it is that of their
+    // calibration (calibrationId), or the default without one.
+    @ColumnInfo(name = "orig_lafmax_db") val origLafMaxDb: Double? = null,
+    @ColumnInfo(name = "orig_sel_db") val origSelDb: Double? = null,
+    @ColumnInfo(name = "orig_background_db") val origBackgroundDb: Double? = null,
+    @ColumnInfo(name = "recalibrated_from_id") val recalibratedFromId: String? = null,
+    @ColumnInfo(name = "recalibration_offset_db") val recalibrationOffsetDb: Double? = null,
 )
 
 @Entity(tableName = "calibrations", indices = [Index(value = ["deviceModel", "audioSource"])])
@@ -153,6 +176,23 @@ interface MeasurementDao {
 
     @Query("DELETE FROM minutes") suspend fun clearMinutes()
     @Query("DELETE FROM events") suspend fun clearEvents()
+
+    // ---- Re-evaluation with a later calibration (v0.3.2) -------------------------------------
+
+    @Query("SELECT COUNT(*) FROM minutes WHERE " + RecalibrationSql.SCOPE)
+    fun minutesToRecalibrate(source: String, calibrationId: Long): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM events WHERE " + RecalibrationSql.SCOPE)
+    fun eventsToRecalibrate(source: String, calibrationId: Long): Flow<Int>
+
+    @Query("SELECT * FROM minutes WHERE " + RecalibrationSql.SCOPE + " ORDER BY id")
+    suspend fun minutesInScope(source: String, calibrationId: Long): List<MinuteEntity>
+
+    @Query("SELECT * FROM events WHERE " + RecalibrationSql.SCOPE + " ORDER BY id")
+    suspend fun eventsInScope(source: String, calibrationId: Long): List<EventEntity>
+
+    @Update suspend fun updateMinutes(m: List<MinuteEntity>)
+    @Update suspend fun updateEvents(e: List<EventEntity>)
 }
 
 @Dao
@@ -170,9 +210,12 @@ interface CalibrationDao {
 
     @Query("SELECT * FROM calibrations ORDER BY createdEpochMs ASC, id ASC")
     suspend fun all(): List<CalibrationEntity>
+
+    @Query("SELECT * FROM calibrations WHERE id = :id")
+    suspend fun byId(id: Long): CalibrationEntity?
 }
 
-@Database(entities = [MinuteEntity::class, EventEntity::class, CalibrationEntity::class], version = 3, exportSchema = false)
+@Database(entities = [MinuteEntity::class, EventEntity::class, CalibrationEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun measurements(): MeasurementDao
     abstract fun calibrations(): CalibrationDao
@@ -180,7 +223,7 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "stadtlaerm.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }
@@ -197,6 +240,10 @@ object Mappers {
         classifierFrames = classifierFrames, calibrationId = calibrationId,
         calibrationOffsetDb = calibrationOffsetDb, audioSource = audioSource, calibrated = calibrated,
         validSeconds = validSeconds, coverage = coverage, clockCorrections = clockCorrections,
+        origLaeqDb = original?.laeqDb?.orNull(), origLafMaxDb = original?.lafMaxDb?.orNull(),
+        origLafMinDb = original?.lafMinDb?.orNull(), origL1Db = original?.l1Db?.orNull(),
+        origL10Db = original?.l10Db?.orNull(), origL50Db = original?.l50Db?.orNull(), origL90Db = original?.l90Db?.orNull(),
+        recalibratedFromId = recalibratedFromId, recalibrationOffsetDb = recalibrationOffsetDb,
     )
 
     private fun Double.orNull(): Double? = takeUnless { it.isNaN() || it.isInfinite() }
@@ -209,6 +256,13 @@ object Mappers {
         Json.parseToJsonElement(categorySharesJson).jsonObject.mapValues { it.value.jsonPrimitive.double },
         classifierFrames, calibrationId, calibrationOffsetDb, audioSource, calibrated,
         validSeconds = validSeconds, clockCorrections = clockCorrections,
+        original = recalibratedFromId?.let {
+            MinuteLevels(
+                origLaeqDb.orNaN(), origLafMaxDb.orNaN(), origLafMinDb.orNaN(), origL1Db.orNaN(),
+                origL10Db.orNaN(), origL50Db.orNaN(), origL90Db.orNaN(),
+            )
+        },
+        recalibratedFromId = recalibratedFromId, recalibrationOffsetDb = recalibrationOffsetDb,
     )
 
     fun NoiseEvent.toEntity() = EventEntity(
@@ -220,6 +274,9 @@ object Mappers {
         }.toString(),
         classifierFrames = classifierFrames, calibrationId = calibrationId, audioSource = audioSource,
         calibrated = calibrated, minLevelDb = minLevelDb.orNull(),
+        origLafMaxDb = original?.lafMaxDb?.orNull(), origSelDb = original?.selDb?.orNull(),
+        origBackgroundDb = original?.backgroundDb?.orNull(),
+        recalibratedFromId = recalibratedFromId, recalibrationOffsetDb = recalibrationOffsetDb,
     )
 
     fun EventEntity.toEvent() = NoiseEvent(
@@ -231,5 +288,7 @@ object Mappers {
         },
         classifierFrames, calibrationId, audioSource, calibrated,
         minLevelDb = minLevelDb.orNaN(),
+        original = recalibratedFromId?.let { EventLevels(origLafMaxDb.orNaN(), origSelDb.orNaN(), origBackgroundDb.orNaN()) },
+        recalibratedFromId = recalibratedFromId, recalibrationOffsetDb = recalibrationOffsetDb,
     )
 }
