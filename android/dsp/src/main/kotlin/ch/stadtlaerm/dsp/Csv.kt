@@ -42,7 +42,7 @@ object Csv {
         val sb = StringBuilder()
         sb.append(
             listOf(
-                "start", "duration_s", "lafmax_db", "sel_db", "background_db", "threshold_db",
+                "start", "duration_s", "lafmax_db", "sel_db", "background_db", "threshold_db", "min_level_db",
                 "dominant_category", "dominant_score",
                 "label1", "score1", "label2", "score2", "label3", "score3",
                 "classifier_frames", "calibration_id", "audio_source", "calibrated",
@@ -55,7 +55,7 @@ object Csv {
             }
             val row = listOf(
                 field(e.startIso), num(e.durationSeconds, 3), num(e.lafMaxDb), num(e.selDb), num(e.backgroundDb),
-                num(e.thresholdDb), field(e.dominantCategory), num(e.dominantScore.toDouble(), 3),
+                num(e.thresholdDb), num(e.minLevelDb), field(e.dominantCategory), num(e.dominantScore.toDouble(), 3),
             ) + labels + listOf(
                 e.classifierFrames.toString(), e.calibrationId?.toString() ?: "", field(e.audioSource),
                 e.calibrated.toString(),

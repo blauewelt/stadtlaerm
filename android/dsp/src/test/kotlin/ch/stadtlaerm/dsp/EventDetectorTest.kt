@@ -4,6 +4,7 @@ import ch.stadtlaerm.dsp.classify.ClassifierFrame
 import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlin.math.log10
+import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,9 +22,9 @@ class EventDetectorTest {
         override fun onConfirmed(startSample: Long) { confirmed++ }
     }
 
-    private fun run(levels: List<Double>, bg: Double = 50.0): Collector {
+    private fun run(levels: List<Double>, bg: Double = 50.0, floor: Double = Double.NEGATIVE_INFINITY): Collector {
         val c = Collector()
-        val d = EventDetector(thresholdDb = 10.0, listener = c)
+        val d = EventDetector(thresholdDb = 10.0, minLevelDb = floor, listener = c)
         d.backgroundDb = bg
         levels.forEachIndexed { i, l -> d.onTick((i + 1L) * tick, l, l, l) }
         d.flush(levels.size.toLong() * tick)
@@ -62,6 +63,107 @@ class EventDetectorTest {
         // Without the hysteresis band (drop to 56) it would be two events.
         val c2 = run(rep(50.0, 40) + rep(70.0, 8) + rep(56.0, 8) + rep(70.0, 4) + rep(50.0, 20))
         assertEquals(2, c2.closed.size)
+    }
+
+    // ---- Absolute floor (eventMinLevelDb) ---------------------------------------------------
+
+    @Test
+    fun candidateBelowFloorIsDroppedAndNeverConfirmed() {
+        // Quiet room: background 20 dB, a 2 s "keystroke" burst at 38 dB is 18 dB above it.
+        val c = run(rep(20.0, 40) + rep(38.0, 16) + rep(20.0, 40), bg = 20.0, floor = 45.0)
+        assertEquals(0, c.closed.size)
+        assertEquals(0, c.confirmed) // so the engine never counts it in event_count
+        assertEquals(1, c.discarded)
+        // Without the floor it is an event.
+        assertEquals(1, run(rep(20.0, 40) + rep(38.0, 16) + rep(20.0, 40), bg = 20.0).closed.size)
+    }
+
+    @Test
+    fun eventAtOrAboveFloorIsKeptAndStoresTheFloor() {
+        val c = run(rep(20.0, 40) + rep(45.0, 8) + rep(20.0, 40), bg = 20.0, floor = 45.0)
+        assertEquals(1, c.closed.size)
+        assertEquals(1, c.confirmed)
+        assertEquals(45.0, c.closed[0].minLevelDb)
+        assertEquals(45.0, c.closed[0].lafMaxDb)
+        assertEquals(0, run(rep(20.0, 40) + rep(44.9, 8) + rep(20.0, 40), bg = 20.0, floor = 45.0).closed.size)
+    }
+
+    @Test
+    fun floorIsJudgedOnTheWholeEventNotItsStart() {
+        // Starts at 36 dB (above bg + threshold, below the floor), peaks at 60 dB after 2 s:
+        // decided at the end by LAFmax, so it is one event starting at the first crossing.
+        val c = run(rep(20.0, 40) + rep(36.0, 16) + rep(60.0, 2) + rep(36.0, 8) + rep(20.0, 40), bg = 20.0, floor = 45.0)
+        assertEquals(1, c.closed.size)
+        assertEquals(40L * tick, c.closed[0].startSample)
+        assertEquals(26 * 0.125, c.closed[0].durationSeconds, 1e-9)
+        assertEquals(60.0, c.closed[0].lafMaxDb)
+        // Still needs the minimum duration: a single loud tick is not enough.
+        assertEquals(0, run(rep(20.0, 40) + rep(60.0, 1) + rep(20.0, 40), bg = 20.0, floor = 45.0).closed.size)
+    }
+
+    @Test
+    fun floorChangeAppliesFromTheNextEvent() {
+        val c = Collector()
+        val d = EventDetector(thresholdDb = 10.0, minLevelDb = 45.0, listener = c)
+        d.backgroundDb = 20.0
+        var i = 0L
+        fun feed(v: Double, n: Int) = repeat(n) { i++; d.onTick(i * tick, v, v, v) }
+        feed(20.0, 8); feed(40.0, 4)
+        d.minLevelDb = 30.0 // changed while a candidate runs: that candidate keeps 45
+        feed(40.0, 4); feed(20.0, 8)
+        feed(40.0, 8); feed(20.0, 8) // the next one uses 30
+        d.flush(i * tick)
+        assertEquals(1, c.closed.size)
+        assertEquals(30.0, c.closed[0].minLevelDb)
+    }
+
+    /** End to end: a quiet burst below the floor is neither an event nor counted in the minute. */
+    @Test
+    fun engineDropsEventsBelowFloorAndDoesNotCountThem() {
+        val zone = ZoneId.of("Europe/Zurich")
+        val start = LocalDateTime.of(2026, 10, 2, 23, 59, 0).atZone(zone).toInstant().toEpochMilli()
+        val bgRms = 1e-5 // ≈ 15 dB(A) with the default offset
+        fun burst(amp: Double, seed: Int) = TestSignals.add(TestSignals.sine(1000.0, amp, 2.0), TestSignals.whiteNoise(bgRms, 2.0, seed = seed))
+        val quietAmp = 10.0.pow((38.0 - Acoustics.DEFAULT_CALIBRATION_OFFSET_DB) / 20) * sqrt(2.0) // ≈ 38 dB(A)
+        val loudAmp = 10.0.pow((60.0 - Acoustics.DEFAULT_CALIBRATION_OFFSET_DB) / 20) * sqrt(2.0) // ≈ 60 dB(A)
+        val signal = TestSignals.concat(
+            TestSignals.whiteNoise(bgRms, 61.0, seed = 1),
+            burst(quietAmp, 2),
+            TestSignals.whiteNoise(bgRms, 10.0, seed = 3),
+            burst(loudAmp, 4),
+            TestSignals.whiteNoise(bgRms, 50.0, seed = 5),
+        )
+        fun measure(floor: Double): Pair<List<NoiseEvent>, List<MinuteRecord>> {
+            val events = ArrayList<NoiseEvent>()
+            val minutes = ArrayList<MinuteRecord>()
+            val clock = SimClock(start)
+            val engine = MeasurementEngine(
+                EngineConfig(zone = zone, classifierEnabled = false, eventMinLevelDb = floor),
+                wallClock = clock::now, mapper = null,
+                listener = object : MeasurementEngine.Listener {
+                    override fun onEvent(event: NoiseEvent) { events += event }
+                    override fun onMinute(minute: MinuteRecord) { minutes += minute }
+                },
+            )
+            TestSignals.feed(engine, signal, clock = clock)
+            engine.stop()
+            return events to minutes
+        }
+        val (noFloorEvents, noFloorMinutes) = measure(Double.NEGATIVE_INFINITY)
+        assertEquals(2, noFloorEvents.size, "$noFloorEvents")
+        assertEquals(2, noFloorMinutes.sumOf { it.eventCount })
+
+        val (events, minutes) = measure(45.0)
+        assertEquals(1, events.size, "$events")
+        assertEquals(60.0, events[0].lafMaxDb, 0.5)
+        assertEquals(45.0, events[0].minLevelDb)
+        assertEquals(1, minutes.sumOf { it.eventCount })
+        assertEquals(1, minutes.single { it.startIso.startsWith("2026-10-03T00:00") }.eventCount)
+    }
+
+    @Test
+    fun defaultFloorIs45dB() {
+        assertEquals(45.0, EngineConfig().eventMinLevelDb)
     }
 
     @Test

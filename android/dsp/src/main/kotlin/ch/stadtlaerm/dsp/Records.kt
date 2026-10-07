@@ -91,7 +91,18 @@ data class NoiseEvent(
     val calibrationId: Long?,
     val audioSource: String,
     val calibrated: Boolean,
-)
+    /**
+     * Absolute LAFmax floor that was in force when the event was detected (setting
+     * "Mindestpegel"); NaN for events recorded before v0.3.0, which had no floor.
+     */
+    val minLevelDb: Double = Double.NaN,
+) {
+    /**
+     * Read-time filter with the *current* floor, so that events stored before the floor existed
+     * (or with a lower one) are treated the same way everywhere (night list, chart).
+     */
+    fun reachesFloor(floorDb: Double): Boolean = lafMaxDb >= floorDb
+}
 
 object Iso {
     private val withMillis: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX")

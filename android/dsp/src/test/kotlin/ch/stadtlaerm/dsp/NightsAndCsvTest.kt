@@ -67,6 +67,26 @@ class NightsAndCsvTest {
     }
 
     @Test
+    fun nightSummaryAppliesEventFloorAtReadTime() {
+        val minutes = listOf(minute(ms(2026, 10, 2, 23, 0), 30.0))
+        val events = listOf(
+            event(ms(2026, 10, 2, 23, 10), 38.0, 22.0, "unclassified"), // keystroke-like, old event (no floor stored)
+            event(ms(2026, 10, 2, 23, 20), 45.0, 22.0, "voices"), // exactly at the floor: kept
+            event(ms(2026, 10, 3, 1, 0), 72.0, 30.0, "loud_vehicle"),
+        )
+        val all = NightSummarizer.summarize(minutes, events, zone).single()
+        assertEquals(3, all.eventCount)
+        val floored = NightSummarizer.summarize(minutes, events, zone, eventMinLevelDb = 45.0).single()
+        assertEquals(2, floored.eventCount)
+        assertEquals(mapOf("voices" to 1, "loud_vehicle" to 1), floored.eventsByCategory)
+        assertEquals(72.0, floored.loudestEvent!!.lafMaxDb)
+        // A night whose only events are below the floor still exists (it has minutes) with 0 events.
+        val high = NightSummarizer.summarize(minutes, events, zone, eventMinLevelDb = 80.0).single()
+        assertEquals(0, high.eventCount)
+        assertNull(high.loudestEvent)
+    }
+
+    @Test
     fun csvQuotesLabelsWithCommas() {
         val t = ms(2026, 10, 2, 23, 10)
         val e = event(t, 80.0, 50.0, "road_traffic").copy(
@@ -74,7 +94,11 @@ class NightsAndCsvTest {
         )
         val csv = Csv.events(listOf(e)).lines()
         assertTrue(csv[1].contains("\"Vehicle horn, car horn, honking\",0.500,Car,0.300,,"), csv[1])
-        assertTrue(csv[1].startsWith("2026-10-02T23:10:00.000+02:00,2.000,80.0,81.0,50.0,10.0,road_traffic"), csv[1])
+        // Events recorded before v0.3.0 have no floor: empty min_level_db.
+        assertTrue(csv[1].startsWith("2026-10-02T23:10:00.000+02:00,2.000,80.0,81.0,50.0,10.0,,road_traffic"), csv[1])
+        assertTrue(csv[0].startsWith("start,duration_s,lafmax_db,sel_db,background_db,threshold_db,min_level_db,dominant_category,"), csv[0])
+        val withFloor = Csv.events(listOf(e.copy(minLevelDb = 45.0))).lines()
+        assertTrue(withFloor[1].startsWith("2026-10-02T23:10:00.000+02:00,2.000,80.0,81.0,50.0,10.0,45.0,road_traffic"), withFloor[1])
         val mcsv = Csv.minutes(listOf(minute(t, 55.0)), listOf("road_traffic", "unclassified")).lines()
         assertEquals(
             "start,duration_s,valid_s,coverage,laeq_db,lafmax_db,lafmin_db,l1_db,l10_db,l50_db,l90_db,event_count,dominant_category," +

@@ -43,8 +43,9 @@ fun NightsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val repo = context.container.measurements
     val nights by produceState<List<NightSummary>?>(null) {
-        combine(repo.minutesFlow(), repo.eventsFlow()) { m, e -> m to e }
-            .map { (m, e) -> NightSummarizer.summarize(m.map { it.toRecord() }, e.map { it.toEvent() }, ZoneId.systemDefault()) }
+        val settings = context.container.settings.state
+        combine(repo.minutesFlow(), repo.eventsFlow(), settings.map { it.eventMinLevelDb }) { m, e, floor -> Triple(m, e, floor) }
+            .map { (m, e, floor) -> NightSummarizer.summarize(m.map { it.toRecord() }, e.map { it.toEvent() }, ZoneId.systemDefault(), eventMinLevelDb = floor) }
             .flowOn(Dispatchers.Default)
             .collect { value = it }
     }

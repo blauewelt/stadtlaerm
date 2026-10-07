@@ -17,6 +17,14 @@ object MigrationSql {
             "`calibrationOffsetDb` REAL NOT NULL, `audioSource` TEXT NOT NULL, `calibrated` INTEGER NOT NULL, " +
             "`validSeconds` REAL NOT NULL, `coverage` REAL NOT NULL, `clockCorrections` INTEGER NOT NULL)"
 
+    /** v3 `events` table, exactly as Room generates it (verified by a unit test). */
+    const val CREATE_EVENTS_V3 =
+        "CREATE TABLE IF NOT EXISTS `events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startEpochMs` INTEGER NOT NULL, " +
+            "`startIso` TEXT NOT NULL, `durationSeconds` REAL NOT NULL, `lafMaxDb` REAL NOT NULL, `selDb` REAL NOT NULL, " +
+            "`backgroundDb` REAL NOT NULL, `thresholdDb` REAL NOT NULL, `dominantCategory` TEXT, `dominantScore` REAL NOT NULL, " +
+            "`topLabelsJson` TEXT NOT NULL, `classifierFrames` INTEGER NOT NULL, `calibrationId` INTEGER, " +
+            "`audioSource` TEXT NOT NULL, `calibrated` INTEGER NOT NULL, `min_level_db` REAL)"
+
     private const val V1_COLUMNS = "`id`, `startEpochMs`, `startIso`, `durationSeconds`, `laeqDb`, `lafMaxDb`, `lafMinDb`, " +
         "`l1Db`, `l10Db`, `l50Db`, `l90Db`, `eventCount`, `dominantCategory`, `categorySharesJson`, `classifierFrames`, " +
         "`calibrationId`, `calibrationOffsetDb`, `audioSource`, `calibrated`"
@@ -36,10 +44,24 @@ object MigrationSql {
         "ALTER TABLE `minutes_v2` RENAME TO `minutes`",
         "CREATE INDEX IF NOT EXISTS `index_minutes_startEpochMs` ON `minutes` (`startEpochMs`)",
     )
+
+    /**
+     * v2 → v3: events store the absolute LAFmax floor that was in force (`min_level_db`). Events
+     * from before have none (NULL); the app applies the current floor to them at read time.
+     */
+    val MIGRATE_2_3: List<String> = listOf(
+        "ALTER TABLE `events` ADD COLUMN `min_level_db` REAL",
+    )
 }
 
 val MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
         MigrationSql.MIGRATE_1_2.forEach { db.execSQL(it) }
+    }
+}
+
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        MigrationSql.MIGRATE_2_3.forEach { db.execSQL(it) }
     }
 }

@@ -29,7 +29,16 @@ data class AppSettings(
     val classifierIntervalSeconds: Int = DEFAULT_INTERVAL_S,
     val classifierNormalize: Boolean = true,
     val wakeLock: Boolean = true,
-)
+    /** Events count only if their LAFmax reaches this level (dB(A)); also applied to stored events. */
+    val eventMinLevelDb: Double = ch.stadtlaerm.dsp.EngineConfig.DEFAULT_EVENT_MIN_LEVEL_DB,
+    /** Event category emphasised in the chart. */
+    val chartHighlightCategory: String = "loud_vehicle",
+) {
+    companion object {
+        const val EVENT_MIN_LEVEL_MIN = 30.0
+        const val EVENT_MIN_LEVEL_MAX = 70.0
+    }
+}
 
 /** Small settings store on SharedPreferences, exposed as a StateFlow. */
 class SettingsStore(context: Context) {
@@ -43,6 +52,9 @@ class SettingsStore(context: Context) {
         classifierIntervalSeconds = prefs.getInt("classifier_interval_s", DEFAULT_INTERVAL_S),
         classifierNormalize = prefs.getBoolean("classifier_normalize", true),
         wakeLock = prefs.getBoolean("wake_lock", true),
+        eventMinLevelDb = prefs.getFloat("event_min_level_db", ch.stadtlaerm.dsp.EngineConfig.DEFAULT_EVENT_MIN_LEVEL_DB.toFloat())
+            .toDouble().coerceIn(AppSettings.EVENT_MIN_LEVEL_MIN, AppSettings.EVENT_MIN_LEVEL_MAX),
+        chartHighlightCategory = prefs.getString("chart_highlight", null) ?: "loud_vehicle",
     )
 
     fun update(transform: (AppSettings) -> AppSettings) {
@@ -53,6 +65,8 @@ class SettingsStore(context: Context) {
             .putInt("classifier_interval_s", n.classifierIntervalSeconds)
             .putBoolean("classifier_normalize", n.classifierNormalize)
             .putBoolean("wake_lock", n.wakeLock)
+            .putFloat("event_min_level_db", n.eventMinLevelDb.toFloat())
+            .putString("chart_highlight", n.chartHighlightCategory)
             .apply()
         _state.value = n
     }
@@ -130,6 +144,10 @@ class MeasurementRepository(private val dao: MeasurementDao) {
 
     fun recentEvents(limit: Int = 30): Flow<List<EventEntity>> = dao.recentEvents(limit)
     fun minutesFlow() = dao.minutesFlow()
+    fun minutesBetween(fromMs: Long, toMs: Long) = dao.minutesBetween(fromMs, toMs)
+    fun eventsBetween(fromMs: Long, toMs: Long) = dao.eventsBetween(fromMs, toMs)
+    fun lastValidEndBefore(t: Long) = dao.lastValidEndBefore(t)
+    fun firstValidStartAfter(t: Long) = dao.firstValidStartAfter(t)
     fun eventsFlow() = dao.eventsFlow()
     fun minuteCount() = dao.minuteCount()
     fun eventCount() = dao.eventCount()

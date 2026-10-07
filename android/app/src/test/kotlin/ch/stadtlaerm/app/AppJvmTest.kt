@@ -130,4 +130,70 @@ class AppJvmTest {
             }
         }
     }
+
+    // ---- Database migration v2 → v3 (event floor) ----------------------------------------------
+
+    /** v2 `events` table as Room generated it for v0.2.0. */
+    private val v2Events =
+        "CREATE TABLE IF NOT EXISTS `events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startEpochMs` INTEGER NOT NULL, " +
+            "`startIso` TEXT NOT NULL, `durationSeconds` REAL NOT NULL, `lafMaxDb` REAL NOT NULL, `selDb` REAL NOT NULL, " +
+            "`backgroundDb` REAL NOT NULL, `thresholdDb` REAL NOT NULL, `dominantCategory` TEXT, `dominantScore` REAL NOT NULL, " +
+            "`topLabelsJson` TEXT NOT NULL, `classifierFrames` INTEGER NOT NULL, `calibrationId` INTEGER, " +
+            "`audioSource` TEXT NOT NULL, `calibrated` INTEGER NOT NULL)"
+
+    @Test
+    fun v3EventsCreateStatementMatchesRoomGeneratedSchema() {
+        val dir = File(System.getProperty("stadtlaerm.generatedDb"))
+        val impl = File(dir, "AppDatabase_Impl.kt").readText()
+        assertTrue(impl.contains(MigrationSql.CREATE_EVENTS_V3), "Room schema changed: update MigrationSql")
+        assertTrue(impl.contains("CREATE INDEX IF NOT EXISTS `index_events_startEpochMs` ON `events` (`startEpochMs`)"))
+        // The minutes table is unchanged in v3.
+        assertTrue(impl.contains(MigrationSql.CREATE_MINUTES_V2))
+    }
+
+    @Test
+    fun migration2to3AddsNullableFloorAndKeepsEvents() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { c ->
+            c.createStatement().use { st ->
+                st.execute(v2Events)
+                st.execute("CREATE INDEX IF NOT EXISTS `index_events_startEpochMs` ON `events` (`startEpochMs`)")
+                st.execute(
+                    "INSERT INTO events (startEpochMs, startIso, durationSeconds, lafMaxDb, selDb, backgroundDb, thresholdDb, " +
+                        "dominantCategory, dominantScore, topLabelsJson, classifierFrames, calibrationId, audioSource, calibrated) VALUES " +
+                        "(1, 'a', 2.25, 45.1, 45.4, 21.8, 10.0, 'unclassified', 0.063, '[]', 2, NULL, 'UNPROCESSED', 0), " +
+                        "(2, 'b', 0.5, 37.3, 30.6, 22.0, 10.0, 'voices', 0.4, '[]', 1, NULL, 'UNPROCESSED', 0)"
+                )
+                MigrationSql.MIGRATE_2_3.forEach { st.execute(it) }
+                st.executeQuery("SELECT lafMaxDb, min_level_db FROM events ORDER BY startEpochMs").use { rs ->
+                    assertTrue(rs.next()); assertEquals(45.1, rs.getDouble(1)); rs.getDouble(2); assertTrue(rs.wasNull())
+                    assertTrue(rs.next()); assertEquals(37.3, rs.getDouble(1)); rs.getDouble(2); assertTrue(rs.wasNull())
+                }
+                st.execute(
+                    "INSERT INTO events (startEpochMs, startIso, durationSeconds, lafMaxDb, selDb, backgroundDb, thresholdDb, " +
+                        "dominantScore, topLabelsJson, classifierFrames, audioSource, calibrated, min_level_db) VALUES " +
+                        "(3, 'c', 1.0, 60.0, 61.0, 30.0, 10.0, 0.0, '[]', 0, 'UNPROCESSED', 0, 45.0)"
+                )
+                fun columns(table: String): List<String> {
+                    val out = ArrayList<String>()
+                    st.executeQuery("PRAGMA table_info(`$table`)").use { rs ->
+                        while (rs.next()) {
+                            out += "${rs.getString("name")}|${rs.getString("type")}|${rs.getInt("notnull")}|${rs.getInt("pk")}|${rs.getString("dflt_value")}"
+                        }
+                    }
+                    return out
+                }
+                st.execute(MigrationSql.CREATE_EVENTS_V3.replace("`events`", "`fresh`"))
+                assertEquals(columns("fresh"), columns("events"))
+                st.executeQuery("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='events'").use { rs ->
+                    assertTrue(rs.next()); assertEquals("index_events_startEpochMs", rs.getString(1))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun eventFloorDefaultsTo45dB() {
+        assertEquals(45.0, AppSettings().eventMinLevelDb)
+        assertEquals("loud_vehicle", AppSettings().chartHighlightCategory)
+    }
 }

@@ -163,6 +163,7 @@ class MeasurementService : Service() {
                     calibrationId = cal.id,
                     audioSource = source,
                     eventThresholdDb = settings.eventThresholdDb,
+                    eventMinLevelDb = settings.eventMinLevelDb,
                     classifierEnabled = settings.classifierEnabled,
                     classifierIntervalSeconds = settings.classifierIntervalSeconds.toDouble(),
                     zone = ZoneId.systemDefault(),

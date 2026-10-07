@@ -1,6 +1,7 @@
 package ch.stadtlaerm.app.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -74,6 +75,8 @@ data class EventEntity(
     val calibrationId: Long?,
     val audioSource: String,
     val calibrated: Boolean,
+    /** LAFmax floor in force when the event was detected (v3); null for events from before v0.3.0. */
+    @ColumnInfo(name = "min_level_db") val minLevelDb: Double? = null,
 )
 
 @Entity(tableName = "calibrations", indices = [Index(value = ["deviceModel", "audioSource"])])
@@ -123,6 +126,22 @@ interface MeasurementDao {
     @Query("SELECT * FROM events ORDER BY startEpochMs ASC")
     fun eventsFlow(): Flow<List<EventEntity>>
 
+    /** Minutes starting in [fromMs, toMs). */
+    @Query("SELECT * FROM minutes WHERE startEpochMs >= :fromMs AND startEpochMs < :toMs ORDER BY startEpochMs ASC")
+    fun minutesBetween(fromMs: Long, toMs: Long): Flow<List<MinuteEntity>>
+
+    /** Events starting in [fromMs, toMs). */
+    @Query("SELECT * FROM events WHERE startEpochMs >= :fromMs AND startEpochMs < :toMs ORDER BY startEpochMs ASC")
+    fun eventsBetween(fromMs: Long, toMs: Long): Flow<List<EventEntity>>
+
+    /** End (ms) of the last minute with valid audio that starts before [t], or null. */
+    @Query("SELECT MAX(startEpochMs + CAST(durationSeconds * 1000 AS INTEGER)) FROM minutes WHERE startEpochMs < :t AND coverage >= 0.5 AND laeqDb IS NOT NULL")
+    fun lastValidEndBefore(t: Long): Flow<Long?>
+
+    /** Start (ms) of the first minute with valid audio that starts at or after [t], or null. */
+    @Query("SELECT MIN(startEpochMs) FROM minutes WHERE startEpochMs >= :t AND coverage >= 0.5 AND laeqDb IS NOT NULL")
+    fun firstValidStartAfter(t: Long): Flow<Long?>
+
     @Query("SELECT * FROM events ORDER BY startEpochMs DESC LIMIT :limit")
     fun recentEvents(limit: Int): Flow<List<EventEntity>>
 
@@ -153,7 +172,7 @@ interface CalibrationDao {
     suspend fun all(): List<CalibrationEntity>
 }
 
-@Database(entities = [MinuteEntity::class, EventEntity::class, CalibrationEntity::class], version = 2, exportSchema = false)
+@Database(entities = [MinuteEntity::class, EventEntity::class, CalibrationEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun measurements(): MeasurementDao
     abstract fun calibrations(): CalibrationDao
@@ -161,7 +180,7 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "stadtlaerm.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }
@@ -200,7 +219,7 @@ object Mappers {
             topLabels.forEach { add(buildJsonObject { put("label", it.label); put("score", it.score) }) }
         }.toString(),
         classifierFrames = classifierFrames, calibrationId = calibrationId, audioSource = audioSource,
-        calibrated = calibrated,
+        calibrated = calibrated, minLevelDb = minLevelDb.orNull(),
     )
 
     fun EventEntity.toEvent() = NoiseEvent(
@@ -211,5 +230,6 @@ object Mappers {
             LabelScore(o["label"]!!.jsonPrimitive.content, o["score"]!!.jsonPrimitive.float)
         },
         classifierFrames, calibrationId, audioSource, calibrated,
+        minLevelDb = minLevelDb.orNaN(),
     )
 }

@@ -18,6 +18,8 @@ data class EngineConfig(
     val eventHysteresisDb: Double = 3.0,
     val eventMinDurationSeconds: Double = 0.5,
     val eventMaxDurationSeconds: Double = 300.0,
+    /** Events are only kept if their LAFmax reaches this absolute level (dB, with the offset). */
+    val eventMinLevelDb: Double = DEFAULT_EVENT_MIN_LEVEL_DB,
     val backgroundWindowSeconds: Double = 300.0,
     val backgroundMinHistorySeconds: Double = 30.0,
     val classifierEnabled: Boolean = true,
@@ -38,6 +40,7 @@ data class EngineConfig(
 
     companion object {
         const val DEFAULT_CLASSIFIER_INTERVAL_SECONDS = 1.0
+        const val DEFAULT_EVENT_MIN_LEVEL_DB = 45.0
     }
 }
 
@@ -177,6 +180,7 @@ class MeasurementEngine(
         hysteresisDb = config.eventHysteresisDb,
         minDurationSeconds = config.eventMinDurationSeconds,
         maxDurationSeconds = config.eventMaxDurationSeconds,
+        minLevelDb = config.eventMinLevelDb,
         tickSamples = tickLen,
         sampleRate = fs,
         listener = object : EventDetector.Listener {
@@ -526,6 +530,7 @@ class MeasurementEngine(
                 calibrationId = config.calibrationId,
                 audioSource = config.audioSource,
                 calibrated = config.calibrated,
+                minLevelDb = ev.minLevelDb,
             )
         )
     }

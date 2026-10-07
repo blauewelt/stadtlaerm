@@ -35,6 +35,8 @@ data class DetectedEvent(
     val selDb: Double,
     val backgroundDb: Double,
     val thresholdDb: Double,
+    /** Absolute floor the event's LAFmax had to reach (see [EventDetector.minLevelDb]). */
+    val minLevelDb: Double = Double.NEGATIVE_INFINITY,
 )
 
 /**
@@ -42,7 +44,12 @@ data class DetectedEvent(
  *
  * - Starts when LAF > background + threshold.
  * - Continues while LAF ≥ background + threshold − hysteresis (background frozen at the start).
- * - Kept only if it lasted ≥ [minDurationSeconds]; force-closed after [maxDurationSeconds].
+ * - Kept only if it lasted ≥ [minDurationSeconds] **and** its LAFmax reached [minLevelDb] (an
+ *   absolute floor, so that keystrokes 10 dB above a 20 dB background are not events);
+ *   force-closed after [maxDurationSeconds]. A candidate that never reaches the floor is
+ *   discarded like a too-short one. Both conditions only ever become true during an event (the
+ *   duration and the running maximum grow), so confirming as soon as both hold keeps exactly the
+ *   events that satisfy them at the end, while the engine can still count events at confirmation.
  * - SEL is integrated from the un-time-weighted per-tick LAeq: LAE = 10·log10(Σ 10^(Leq_i/10)·Δt / 1 s).
  */
 class EventDetector(
@@ -50,6 +57,8 @@ class EventDetector(
     val hysteresisDb: Double = 3.0,
     val minDurationSeconds: Double = 0.5,
     val maxDurationSeconds: Double = 300.0,
+    /** Absolute floor for LAFmax in dB; −∞ disables it. Read at event start. */
+    var minLevelDb: Double = Double.NEGATIVE_INFINITY,
     val tickSamples: Int = Acoustics.SAMPLE_RATE / 8,
     val sampleRate: Int = Acoustics.SAMPLE_RATE,
     private val listener: Listener,
@@ -57,9 +66,9 @@ class EventDetector(
     interface Listener {
         /** LAF crossed the start threshold (event not yet confirmed). */
         fun onCandidateStart(startSample: Long) {}
-        /** Candidate reached the minimum duration: it will be reported as an event. */
+        /** Candidate reached the minimum duration and the level floor: it will be reported as an event. */
         fun onConfirmed(startSample: Long) {}
-        /** Candidate ended before the minimum duration. */
+        /** Candidate ended before reaching the minimum duration or the level floor. */
         fun onDiscarded(startSample: Long) {}
         fun onClosed(event: DetectedEvent)
     }
@@ -75,6 +84,7 @@ class EventDetector(
     private var startSample = 0L
     private var bgAtStart = 0.0
     private var thrAtStart = 0.0
+    private var floorAtStart = Double.NEGATIVE_INFINITY
     private var ticks = 0
     private var lafMax = Double.NEGATIVE_INFINITY
     private var energy = 0.0
@@ -108,6 +118,7 @@ class EventDetector(
                 startSample = tickEndSample - tickSamples
                 bgAtStart = bg
                 thrAtStart = thresholdDb
+                floorAtStart = minLevelDb
                 ticks = 0
                 lafMax = Double.NEGATIVE_INFINITY
                 energy = 0.0
@@ -129,7 +140,7 @@ class EventDetector(
         ticks++
         if (tickLafMaxDb > lafMax) lafMax = tickLafMaxDb
         energy += 10.0.pow(tickLeqDb / 10.0) * tickSeconds
-        if (!confirmed && ticks >= minTicks) {
+        if (!confirmed && ticks >= minTicks && lafMax >= floorAtStart) {
             confirmed = true
             listener.onConfirmed(startSample)
         }
@@ -156,6 +167,7 @@ class EventDetector(
                 selDb = 10.0 * log10(energy),
                 backgroundDb = bgAtStart,
                 thresholdDb = thrAtStart,
+                minLevelDb = floorAtStart,
             )
         )
     }

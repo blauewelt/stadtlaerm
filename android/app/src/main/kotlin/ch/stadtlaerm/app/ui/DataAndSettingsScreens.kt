@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.stadtlaerm.app.BuildConfig
 import ch.stadtlaerm.app.audio.AudioSourceSelector
 import ch.stadtlaerm.app.container
+import ch.stadtlaerm.app.data.AppSettings
 import ch.stadtlaerm.app.data.CalibrationRepository
 import ch.stadtlaerm.dsp.Acoustics
 import kotlinx.coroutines.Dispatchers
@@ -150,6 +151,18 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
             Text(
                 "Ein Ereignis beginnt, wenn LAF den Hintergrund um die Schwelle übersteigt, dauert mind. 0.5 s und endet 3 dB unter der Schwelle.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(8.dp))
+            StatRow("Mindestpegel für Ereignisse (LAFmax)", "${s.eventMinLevelDb.toInt()} dB(A)")
+            Slider(
+                value = s.eventMinLevelDb.toFloat(),
+                valueRange = AppSettings.EVENT_MIN_LEVEL_MIN.toFloat()..AppSettings.EVENT_MIN_LEVEL_MAX.toFloat(),
+                steps = (AppSettings.EVENT_MIN_LEVEL_MAX - AppSettings.EVENT_MIN_LEVEL_MIN).toInt() - 1,
+                onValueChange = { v -> c.settings.update { it.copy(eventMinLevelDb = Math.round(v).toDouble()) } },
+            )
+            Text(
+                "Ereignisse zählen nur, wenn sie lauter sind als dieser Pegel. Bei unkalibriertem Telefon sind die Pegel ungefähr.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

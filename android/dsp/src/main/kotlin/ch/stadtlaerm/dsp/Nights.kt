@@ -58,16 +58,21 @@ object NightSummarizer {
         }
     }
 
-    /** Groups minutes and events into nights, newest first. Minutes are assigned by their start. */
+    /**
+     * Groups minutes and events into nights, newest first. Minutes are assigned by their start.
+     * Only events with LAFmax ≥ [eventMinLevelDb] are counted (the floor is applied at read time
+     * too, so events stored before it existed are treated like new ones).
+     */
     fun summarize(
         minutes: List<MinuteRecord>,
         events: List<NoiseEvent>,
         zone: ZoneId,
         startHour: Int = NIGHT_START_HOUR,
         endHour: Int = NIGHT_END_HOUR,
+        eventMinLevelDb: Double = Double.NEGATIVE_INFINITY,
     ): List<NightSummary> {
         val minutesByNight = minutes.groupBy { nightOf(it.startEpochMs, zone, startHour, endHour) }
-        val eventsByNight = events.groupBy { nightOf(it.startEpochMs, zone, startHour, endHour) }
+        val eventsByNight = events.filter { it.reachesFloor(eventMinLevelDb) }.groupBy { nightOf(it.startEpochMs, zone, startHour, endHour) }
         val nights = (minutesByNight.keys + eventsByNight.keys).filterNotNull().toSortedSet().reversed()
         return nights.map { night ->
             val allMinutes = minutesByNight[night].orEmpty()
