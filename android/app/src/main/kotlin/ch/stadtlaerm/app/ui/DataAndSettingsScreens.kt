@@ -136,6 +136,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             "Einstellungen", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
         )
+        if (updateReminderAgeDays() != null) SectionCard { UpdateReminderLine() }
         if (live.running) {
             Text(
                 "Änderungen gelten ab dem nächsten Start der Messung.",
@@ -222,6 +223,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
             if (live.running && live.effects.isNotEmpty()) StatRow("Effekte", live.effects.joinToString(", "))
         }
+        AppVersionCard()
         SectionCard("Über Stadtlärm & Datenschutz") {
             Text("Stadtlärm ${BuildConfig.VERSION_NAME} – offene Lärmmessung für Zürich. Lizenz: Apache-2.0.", style = MaterialTheme.typography.bodyMedium)
             Text(

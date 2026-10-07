@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-PG+SFKHKobA4bF8ZC0JDEx6GS15W1Ts+K5idqTGLS/U='; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>Update prüfen – Stadtlärm</title>
+<meta name="description" content="Prüfen, ob eine neuere Version der Stadtlärm-App verfügbar ist.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b5cad'/%3E%3Cpath d='M4 22h5l3-6 3 3 3-13 3 13 3-4h4' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="wrap page-head">
+  <a class="home" href="./">Stadtlärm</a>
+  <h1>Update prüfen</h1>
+</header>
+
+<!-- Release checklist: data-version / data-code must match the published APK (versionName / versionCode). -->
+<main class="wrap" id="update" data-version="0.3.1" data-code="5">
+
+<section>
+  <h2 id="status">Aktuelle Version: 0.3.1</h2>
+  <p id="download"><a class="button" href="download/stadtlaerm.apk" download type="application/vnd.android.package-archive">App herunterladen</a></p>
+  <ol class="steps" id="hints" hidden>
+    <li>Die heruntergeladene Datei in der App «Dateien» öffnen (Ordner «Downloads»). Der Download-Dialog des Browsers verweigert das Öffnen oft.</li>
+    <li>Die neue Version wird über die alte installiert. Die Messwerte bleiben erhalten.</li>
+  </ol>
+  <p class="small">Die installierte Version wird nur im Browser verglichen; der Teil nach dem # wird nicht an den Server gesendet.</p>
+  <p class="small">Mehr zur Installation und die Prüfsumme der Datei stehen auf der <a href="./#installation">Startseite</a>.</p>
+</section>
+
+</main>
+
+<footer class="wrap">
+  <ul>
+    <li>Ein Projekt von Christian Frank, Zürich</li>
+    <li><a href="./">Startseite</a></li>
+    <li><a href="datenschutz.html">Datenschutz</a></li>
+    <li><a href="https://github.com/blauewelt/stadtlaerm">Quellcode</a></li>
+  </ul>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var main = document.getElementById("update");
+  var latest = main.getAttribute("data-version");
+  var latestCode = parseInt(main.getAttribute("data-code"), 10);
+  var status = document.getElementById("status");
+  var download = document.getElementById("download");
+  var hints = document.getElementById("hints");
+
+  function compareVersions(a, b) {
+    var x = a.split(/[.+-]/), y = b.split(/[.+-]/);
+    for (var i = 0; i < Math.max(x.length, y.length); i++) {
+      var p = parseInt(x[i] || "0", 10) || 0, q = parseInt(y[i] || "0", 10) || 0;
+      if (p !== q) return p < q ? -1 : 1;
+    }
+    return 0;
+  }
+
+  function render() {
+    var params = new URLSearchParams(location.hash.replace(/^#/, ""));
+    var v = params.get("v");
+    var c = params.get("c");
+    if (v !== null && !/^[0-9A-Za-z.+ -]{1,32}$/.test(v)) v = null;
+    if (c !== null && !/^[0-9]{1,9}$/.test(c)) c = null;
+
+    var newer;
+    if (c !== null) newer = parseInt(c, 10) < latestCode;
+    else if (v !== null) newer = compareVersions(v, latest) < 0;
+
+    if (newer === undefined) {
+      status.textContent = "Aktuelle Version: " + latest;
+      download.hidden = false;
+      hints.hidden = true;
+    } else if (newer) {
+      status.textContent = "Update verfügbar: Version " + latest +
+        (v !== null ? " (installiert: " + v + ")" : "");
+      download.hidden = false;
+      hints.hidden = false;
+    } else {
+      status.textContent = "Deine Version " + (v !== null ? v : latest) + " ist aktuell.";
+      download.hidden = true;
+      hints.hidden = true;
+    }
+  }
+
+  render();
+  window.addEventListener("hashchange", render);
+})();
+</script>
+</body>
+</html>

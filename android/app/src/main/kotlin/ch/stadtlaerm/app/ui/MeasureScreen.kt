@@ -157,6 +157,7 @@ fun MeasureScreen(modifier: Modifier = Modifier) {
                     ) { Text(if (live.starting) "Startet …" else "Messung starten", fontSize = 18.sp) }
                 }
                 if (calibrating) Text("Kalibrierung läuft – Messung erst danach möglich.", style = MaterialTheme.typography.bodySmall)
+                if (!live.running) UpdateReminderLine()
                 live.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
                 if (live.running) {
                     Text(

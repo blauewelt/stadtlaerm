@@ -1,4 +1,4 @@
-# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.0)
+# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.1)
 
 Stadtlärm turns an Android phone into a night-time noise logger. It measures A-weighted
 sound levels the way a sound level meter does (IEC 61672-1 A-weighting, Fast time weighting),
@@ -150,6 +150,26 @@ To check the download: `sha256sum stadtlaerm.apk` must match the value on the we
 Requirements: Android 8.0 (API 26) or newer, ARM phone (arm64-v8a or armeabi-v7a). Not yet
 validated on many devices — see "Status" below.
 
+## Updates without internet access
+
+The app has no internet permission, so it cannot look for updates itself, and this stays so.
+Instead:
+
+- **Einstellungen → App-Version** shows «Stadtlärm 0.3.1 (Build vom 7.10.2026)» and a button
+  **Nach Update suchen**. It opens
+  `https://stadtlaerm.ch/update.html#v=<versionName>&c=<versionCode>` in the browser. The page
+  ([docs/update.html](../docs/update.html)) carries the published version as
+  `data-version`/`data-code` and a small inline script compares the versionCode from the URL
+  fragment with it (the version strings if `c` is missing). The part after `#` is never sent to
+  the server, so the comparison happens only in the browser. Without a browser the app shows
+  «Kein Browser gefunden».
+- **Age reminder, fully offline:** `BuildConfig.BUILD_DATE` is the build date (ISO, Zürich
+  calendar day of the Gradle build; `SOURCE_DATE_EPOCH` overrides it). From 30 days after it,
+  the top of Einstellungen and a line under «Messung starten» say «Diese App-Version ist n Tage
+  alt. Nach Update suchen?» (tap = same as the button). «Später» hides it for 14 days. If the
+  phone's clock went backwards since «Später», the snooze is ignored. The logic is pure Kotlin
+  (`app/.../update/UpdateCheck.kt`) with JVM tests.
+
 ## Overnight measurement
 
 1. Put the phone where you want to measure — ideally at an open window or on the balcony,
@@ -267,10 +287,11 @@ share sheet. Column names are in the first row (`laeq_db`, `lafmax_db`, `share_l
 - Settings changes (including the classifier level adjustment) apply from the next start of a measurement.
 - Calibration must be done with the app in the foreground; leaving the app aborts the measurement.
 
-## Status of v0.3.0
+## Status of v0.3.1
 
-v0.3.0 is a public **test version**: v0.2.0 plus the chart and the event floor (see
-[CHANGELOG](CHANGELOG.md)).
+v0.3.1 is a public **test version**: v0.3.0 (chart, event floor) plus the update check without
+internet permission (see [CHANGELOG](CHANGELOG.md)). The update card and reminder are built and
+their logic is unit-tested, but they have not been tried on a phone yet.
 
 - The chart is verified with JVM unit tests and JVM renders (Paparazzi) in light and dark mode,
   with synthetic data and with a real night; touch gestures and performance have not yet been
@@ -326,9 +347,21 @@ aapt2 dump permissions app/build/outputs/apk/release/app-release.apk            
 sha256sum app/build/outputs/apk/release/app-release.apk
 ```
 
-To publish, copy it to `../docs/download/stadtlaerm.apk` and update version, size and SHA-256 on
-`../docs/index.html`. The release key cannot be replaced without forcing every user to
-uninstall and reinstall, so keep the keystore and its password backed up.
+To publish, follow the release checklist below. The release key cannot be replaced without
+forcing every user to uninstall and reinstall, so keep the keystore and its password backed up.
+
+### Release checklist
+
+1. Bump `versionName` and `versionCode` in `app/build.gradle.kts`; add a `CHANGELOG.md` entry.
+2. Build signed: `./gradlew test assembleRelease -Pstadtlaerm.keystoreProperties=…`; check the
+   signer certificate SHA-256 and that `aapt2 dump permissions` shows no `INTERNET` (see above).
+3. Copy `app/build/outputs/apk/release/app-release.apk` to `../docs/download/stadtlaerm.apk`.
+4. Update `../docs/index.html`: version (button note, facts, «Stand des Projekts»), size in MB
+   with a German decimal comma, SHA-256.
+5. Update `../docs/update.html`: `data-version` and `data-code` on `<main>`, and the static
+   «Aktuelle Version: …» heading (shown before the script runs).
+6. If the inline script of `update.html` changed, recompute its CSP hash:
+   `python3 tools/csp_hash.py --write ../docs/update.html` (without `--write` it only checks).
 
 Release builds contain only `arm64-v8a` and `armeabi-v7a` native code; debug builds also
 include `x86_64` for the emulator. Minification is off (LiteRT has not been tested with R8).
@@ -355,6 +388,7 @@ chart/ Android library: the history chart (drawing model, Compose Canvas) and th
        JVM tests and Paparazzi renders
 app/   Android: AudioRecord capture, foreground service, LiteRT YAMNet, Room, Compose UI
 tools/verify_yamnet.py    model I/O + Kotlin-vs-Python preprocessing check
+tools/csp_hash.py         CSP script hashes for the website's inline script (docs/update.html)
 ```
 
 ## Roadmap

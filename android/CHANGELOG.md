@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.1 — 2026-10-07
+
+Update check that keeps the app without any internet permission.
+
+- **Design.** The app still has no internet permission: «Nach Update suchen» only opens
+  `stadtlaerm.ch/update.html#v=…&c=…` in the browser. The page compares the installed version
+  from the URL fragment, which is never sent to the server, with the published one in the
+  browser.
+- **Einstellungen → App-Version:** «Stadtlärm 0.3.1 (Build vom 7.10.2026)» and the button «Nach
+  Update suchen» («Kein Browser gefunden» if no browser is installed).
+- **Offline age reminder:** from 30 days after the build date, Einstellungen and the Messen
+  screen show «Diese App-Version ist n Tage alt. Nach Update suchen?»; «Später» hides it for 14
+  days. New `BuildConfig.BUILD_DATE` (date of the Gradle build, `SOURCE_DATE_EPOCH` overrides).
+- Website: new page `update.html` (one inline script, allowed by its SHA-256 in the
+  Content-Security-Policy), linked in the footer; the privacy page explains the comparison.
+  Release checklist in the README.
+
 ## 0.3.0 — 2026-10-07
 
 Test version: a chart of the measured noise, an absolute floor for events, and a classification

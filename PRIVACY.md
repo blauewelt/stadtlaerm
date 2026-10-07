@@ -10,7 +10,8 @@ project, and this page explains how the code keeps it, so anyone can check.
 2. **Raw audio never leaves the app process.** The manifest has **no `INTERNET` permission**
    (it is explicitly removed with `tools:node="remove"`, so a library cannot add it back), and
    there is no network code. Data leaves the phone only when *you* export a CSV/JSON file and
-   share it through the Android share menu.
+   share it through the Android share menu. «Nach Update suchen» (since v0.3.1) only hands a
+   link to the browser; see "The website" below.
 3. **Raw audio is never logged.** The only log line in the audio path reports an exception
    class name when the microphone cannot be opened.
 4. **Raw audio is held only briefly, in memory, in small fixed-size buffers.** The largest is
@@ -61,7 +62,10 @@ accordingly before you share them.
 
 [stadtlaerm.ch](https://stadtlaerm.ch) (source in `docs/`) is static HTML and CSS. It sets no
 cookies, runs no analytics and loads nothing from third parties: no web fonts, no CDNs, no
-external images. It is hosted on GitHub Pages; GitHub may log visitors' IP addresses for
+external images. The only script is inline on `update.html` (allowed by its hash in the
+Content-Security-Policy): the app opens `update.html#v=<version>&c=<versionCode>`, the browser
+does not send the part after `#` to the server, and the script compares it with the published
+version locally. It is hosted on GitHub Pages; GitHub may log visitors' IP addresses for
 technical reasons, see the
 [GitHub General Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 The German privacy page is [docs/datenschutz.html](docs/datenschutz.html).

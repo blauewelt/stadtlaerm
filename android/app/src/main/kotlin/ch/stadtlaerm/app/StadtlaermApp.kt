@@ -7,6 +7,7 @@ import ch.stadtlaerm.app.data.CalibrationRepository
 import ch.stadtlaerm.app.data.MeasurementRepository
 import ch.stadtlaerm.app.data.SettingsStore
 import ch.stadtlaerm.app.service.LiveState
+import ch.stadtlaerm.app.update.UpdateReminderStore
 import ch.stadtlaerm.dsp.classify.CategoryMapper
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -27,6 +28,7 @@ class AppContainer(context: Context) {
     val settings: SettingsStore by lazy { SettingsStore(appContext) }
     val calibrations: CalibrationRepository by lazy { CalibrationRepository(db.calibrations()) }
     val measurements: MeasurementRepository by lazy { MeasurementRepository(db.measurements()) }
+    val updateReminder: UpdateReminderStore by lazy { UpdateReminderStore(appContext) }
     val live = MutableStateFlow(LiveState())
     /** True while the calibration screen is using the microphone (blocks starting a measurement). */
     val calibrationActive = MutableStateFlow(false)

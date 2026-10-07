@@ -15,9 +15,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -46,7 +50,9 @@ private val tabs = listOf(
 @Composable
 fun AppRoot() {
     var selected by rememberSaveable { mutableIntStateOf(0) }
+    val snackbar = remember { SnackbarHostState() }
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             NavigationBar {
                 tabs.forEachIndexed { i, t ->
@@ -61,12 +67,14 @@ fun AppRoot() {
         },
     ) { padding ->
         val m = Modifier.padding(padding)
-        when (selected) {
-            0 -> MeasureScreen(m)
-            1 -> NightsScreen(m)
-            2 -> CalibrateScreen(m)
-            3 -> DataScreen(m)
-            else -> SettingsScreen(m)
+        CompositionLocalProvider(LocalSnackbarHost provides snackbar) {
+            when (selected) {
+                0 -> MeasureScreen(m)
+                1 -> NightsScreen(m)
+                2 -> CalibrateScreen(m)
+                3 -> DataScreen(m)
+                else -> SettingsScreen(m)
+            }
         }
     }
 }

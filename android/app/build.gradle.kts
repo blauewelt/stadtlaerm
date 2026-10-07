@@ -1,3 +1,6 @@
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Properties
 
 plugins {
@@ -23,6 +26,14 @@ val keystoreProperties: Properties? = keystorePropertiesPath
         Properties().apply { file.inputStream().use { load(it) } }
     }
 
+// Build date shown in the app («Build vom …») and used for the offline "this version is n days
+// old" reminder. Taken from the build time (Zürich calendar date); SOURCE_DATE_EPOCH, if set,
+// overrides it for reproducible builds. Tests may read BuildConfig.BUILD_DATE but must never
+// assert its value.
+val buildDate: String = (System.getenv("SOURCE_DATE_EPOCH")?.toLongOrNull()
+    ?.let { Instant.ofEpochSecond(it).atZone(ZoneId.of("Europe/Zurich")).toLocalDate() }
+    ?: LocalDate.now(ZoneId.of("Europe/Zurich"))).toString()
+
 android {
     namespace = "ch.stadtlaerm.app"
     compileSdk = 35
@@ -31,8 +42,9 @@ android {
         applicationId = "ch.stadtlaerm.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.3.0"
+        versionCode = 5
+        versionName = "0.3.1"
+        buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
     }
 
     signingConfigs {
