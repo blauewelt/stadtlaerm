@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.3.3 — 2026-10-07
+
+### Public app (`ch.stadtlaerm.app`, published)
+
+- **Notification while measuring:** title «Mikrofon aktiv – Messung läuft», text with the current
+  LAeq as before, «Stopp» button. The notification channel now has importance *default*, so the
+  icon stays visible in the status bar (no sound, no vibration). Because Android cannot raise the
+  importance of an existing channel, the channel has a new id (`measurement_active`); the old one
+  is removed.
+- **New setting «Messung beenden, wenn die App geschlossen wird»** (Einstellungen → Messung, off
+  by default). Off: as before, the measurement keeps running as a background service when the app
+  is swiped away. On: swiping the app away stops the measurement exactly like «Stopp»
+  (`Service.onTaskRemoved`), including the current partial minute. A stop now stays in the
+  foreground until the last minute and event are in the database (at most 3 s).
+- **Two product flavours** (Gradle dimension `edition`): `public` (this app) and `labor` (below).
+  The measurement service hands the audio blocks, the event lifecycle and the classifier results
+  to an `AudioTap`, which in the public app is always the no-op `NoAudioTap`; the engine reports
+  sample indices and classifier results through new no-op listener hooks. **No change to the
+  measurement**, same manifest and permissions (no `INTERNET`). The public APK contains no
+  recording code; how to check is described in PRIVACY.md → «Labor-Build». APK paths now include
+  the flavour (`app/build/outputs/apk/public/release/app-public-release.apk`).
+
+### New: «Stadtlärm Labor» (`ch.stadtlaerm.labor`, `0.3.3-labor`, never published)
+
+A diagnostics build that can record audio to debug the event detector and the sound-source
+classifier, only after «Einstellungen → Labor → Audio während der Messung aufzeichnen» is
+switched on and confirmed. Red icon and a red banner on every screen («LABOR-VERSION – kann Audio
+aufzeichnen», «Aufnahme läuft»).
+
+- Event clips: WAV 16 kHz, 16-bit, 5 s before to 5 s after the event, at most 60 s (flagged
+  `truncated`), from a 6 s ring buffer of the 48 kHz input; clip rate every / every 2nd / every
+  5th event.
+- Continuous recording: AAC-LC 16 kHz 64 kbit/s, one M4A per wall-clock hour.
+- Classifier trace: every clip's manifest line carries the classifier's per-second results inside
+  the clip (top-5 labels and scores, category decision and score, input gain, LAF); every
+  classifier run of the measurement is also logged to `classifier/<yyyyMMdd_HH>.jsonl`.
+- `manifest.jsonl`: session start/stop (device, versions, audio chain, calibration, event
+  threshold and floor, settings, drop counts), sample clock and clock corrections, per-clip event
+  data, per-file sample mapping.
+- Storage cap (default 2 GB; recording stops, measuring continues), used space and file counts,
+  «Ordner anzeigen», «Als ZIP teilen» (clips, manifest, classifier logs; hour files only under
+  500 MB) and «Alle Aufnahmen löschen». Events with a clip get a red dot in «Letzte Ereignisse».
+- All of it lives in `app/src/labor/`; JVM tests in `app/src/testLabor/`.
+
 ## 0.3.2 — 2026-10-07
 
 The event floor follows the calibration, and old measurements can be re-evaluated with a new

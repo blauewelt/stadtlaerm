@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Labor edition (never published): own name so it is never mistaken for the public app. -->
+<resources>
+    <string name="app_name">Stadtlärm Labor</string>
+</resources>

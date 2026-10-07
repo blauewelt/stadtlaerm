@@ -33,6 +33,11 @@ data class AppSettings(
     val eventMinLevelDb: Double = ch.stadtlaerm.dsp.EngineConfig.DEFAULT_EVENT_MIN_LEVEL_DB,
     /** Event category emphasised in the chart. */
     val chartHighlightCategory: String = "loud_vehicle",
+    /**
+     * «Messung beenden, wenn die App geschlossen wird»: stop the measurement when the app's task
+     * is swiped away. Off by default: the measurement keeps running as a foreground service.
+     */
+    val stopOnTaskRemoved: Boolean = false,
 ) {
     companion object {
         const val EVENT_MIN_LEVEL_MIN = 20.0
@@ -55,6 +60,7 @@ class SettingsStore(context: Context) {
         eventMinLevelDb = prefs.getFloat("event_min_level_db", ch.stadtlaerm.dsp.EngineConfig.DEFAULT_EVENT_MIN_LEVEL_DB.toFloat())
             .toDouble().coerceIn(AppSettings.EVENT_MIN_LEVEL_MIN, AppSettings.EVENT_MIN_LEVEL_MAX),
         chartHighlightCategory = prefs.getString("chart_highlight", null) ?: "loud_vehicle",
+        stopOnTaskRemoved = prefs.getBoolean("stop_on_task_removed", false),
     )
 
     fun update(transform: (AppSettings) -> AppSettings) {
@@ -67,6 +73,7 @@ class SettingsStore(context: Context) {
             .putBoolean("wake_lock", n.wakeLock)
             .putFloat("event_min_level_db", n.eventMinLevelDb.toFloat())
             .putString("chart_highlight", n.chartHighlightCategory)
+            .putBoolean("stop_on_task_removed", n.stopOnTaskRemoved)
             .apply()
         _state.value = n
     }

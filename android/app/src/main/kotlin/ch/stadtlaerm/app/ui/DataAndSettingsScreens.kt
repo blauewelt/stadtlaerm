@@ -44,6 +44,7 @@ import ch.stadtlaerm.app.container
 import ch.stadtlaerm.app.data.AppSettings
 import ch.stadtlaerm.app.data.CalibrationRepository
 import ch.stadtlaerm.app.data.Recalibrator
+import ch.stadtlaerm.app.edition.EditionUi
 import ch.stadtlaerm.dsp.calibration.EventFloor
 import ch.stadtlaerm.dsp.calibration.Recalibration
 import kotlinx.coroutines.flow.flowOf
@@ -237,6 +238,16 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+        SectionCard("Messung") {
+            SwitchRow("Messung beenden, wenn die App geschlossen wird", s.stopOnTaskRemoved) { v ->
+                c.settings.update { it.copy(stopOnTaskRemoved = v) }
+            }
+            Text(
+                "Standard: die Messung läuft als Hintergrunddienst weiter, auch wenn die App weggewischt wird; " +
+                    "die Benachrichtigung zeigt es an und hat einen Stopp-Knopf.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         SectionCard("Nachtmessung & Akku") {
             SwitchRow("CPU während der Messung wach halten (Wake-Lock)", s.wakeLock) { v -> c.settings.update { it.copy(wakeLock = v) } }
             Text(
@@ -268,6 +279,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
             if (live.running && live.effects.isNotEmpty()) StatRow("Effekte", live.effects.joinToString(", "))
         }
+        EditionUi.SettingsSection()
         AppVersionCard()
         SectionCard("Über Stadtlärm & Datenschutz") {
             Text("Stadtlärm ${BuildConfig.VERSION_NAME} – offene Lärmmessung für Zürich. Lizenz: Apache-2.0.", style = MaterialTheme.typography.bodyMedium)

@@ -27,6 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import ch.stadtlaerm.app.edition.EditionUi
 import ch.stadtlaerm.chart.StadtlaermTheme
 
 class MainActivity : ComponentActivity() {
@@ -52,6 +53,8 @@ fun AppRoot() {
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
     Scaffold(
+        // Public: emits nothing (same as Scaffold's default). Labor: the red warning banner.
+        topBar = { EditionUi.Banner() },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             NavigationBar {

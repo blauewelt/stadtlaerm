@@ -1,4 +1,4 @@
-# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.2)
+# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.3)
 
 Stadtlärm turns an Android phone into a night-time noise logger. It measures A-weighted
 sound levels the way a sound level meter does (IEC 61672-1 A-weighting, Fast time weighting),
@@ -7,7 +7,9 @@ likely source using an on-device sound classifier, and summarises every night
 (22:00–06:00, the Swiss night period).
 
 **Privacy by construction:** no audio is ever stored or sent, and the app has no internet
-permission at all. See [PRIVACY.md](../PRIVACY.md).
+permission at all. See [PRIVACY.md](../PRIVACY.md). (A separate, unpublished diagnostics app,
+«Stadtlärm Labor», can record audio; the public app contains none of its code. See
+[Labor build](#labor-build).)
 
 The UI is German (Swiss spelling); the code and docs are English. License: [Apache-2.0](../LICENSE).
 
@@ -187,9 +189,16 @@ Instead:
    indoor level (typically 25–35 dB lower).
 2. Optionally connect the charger. Measurement does not depend on charging; the charger only
    saves battery (see below).
-3. **Messen → Messung starten.** A persistent notification shows the current LAeq; you can turn
-   the screen off.
-4. In the morning: **Messung stoppen**, then look at **Nächte**.
+3. **Messen → Messung starten.** While measuring, a persistent notification «Mikrofon aktiv –
+   Messung läuft» with the current LAeq and a «Stopp» button is shown (its icon stays in the status
+   bar); you can turn the screen off.
+4. In the morning: **Messung stoppen** (or «Stopp» in the notification), then look at **Nächte**.
+
+**Closing the app.** By default the measurement keeps running as a background service when the
+app is swiped away from the recent apps; the notification shows it and has the «Stopp» button.
+With **Einstellungen → Messung → «Messung beenden, wenn die App geschlossen wird»** (off by
+default) swiping the app away stops the measurement exactly like «Stopp»: the current, partial
+minute is still saved.
 
 ### Battery
 
@@ -357,10 +366,13 @@ for data that was never re-evaluated.
 - Settings changes (including the classifier level adjustment) apply from the next start of a measurement.
 - Calibration must be done with the app in the foreground; leaving the app aborts the measurement.
 
-## Status of v0.3.2
+## Status of v0.3.3
 
-v0.3.2 is a public **test version**: v0.3.1 (chart, event floor, update check without internet
-permission) plus an event floor that follows the calibration and the re-evaluation of old
+v0.3.3 is a public **test version**: v0.3.2 plus a clearer measurement notification («Mikrofon
+aktiv – Messung läuft», visible in the status bar) and the setting «Messung beenden, wenn die App
+geschlossen wird»; the code was split into two product flavours (`public` and the unpublished
+[Labor build](#labor-build)) without any change to the measurement. v0.3.2: v0.3.1 (chart, event
+floor, update check without internet permission) plus an event floor that follows the calibration and the re-evaluation of old
 measurements with a new calibration (see [CHANGELOG](CHANGELOG.md)). The arithmetic, the database
 migration (v3 → v4) and the CSV columns are unit-tested on the JVM; the dialogs, the progress bar
 and the update check have not been tried on a phone yet.
@@ -377,16 +389,112 @@ and the update check have not been tried on a phone yet.
   runtime on Android, battery use and the UI need testing on a range of real phones. Reports
   are welcome as GitHub issues (please include the phone model and Android version).
 
+## Labor build
+
+«Stadtlärm Labor» (`ch.stadtlaerm.labor`, version name `0.3.3-labor`) is a separate app built
+from the same code that can **record audio**, to debug the event detector and the sound-source
+classifier with real sound — e.g. why highway passes of cars and motorbikes (3–10 s, ≈ 13 dB above
+a quiet background) are not recognised: each clip comes with the classifier's per-second results
+(top-5 labels and scores, category decision, the input gain applied to the model, LAF), so you can
+listen to what the model heard and see what it scored. It is installed next to the public app (own app id, own data, red
+icon, a red banner «LABOR-VERSION – kann Audio aufzeichnen» on every screen) and is signed with
+the release key so that it can be updated. It is **never published**: not in `docs/`, not linked
+from the website. The public app contains none of its code (how to check: PRIVACY.md →
+«Labor-Build»).
+
+```sh
+./gradlew testLaborDebugUnitTest assembleLaborDebug
+./gradlew assembleLaborRelease -Pstadtlaerm.keystoreProperties=…   # signed
+# APK: app/build/outputs/apk/labor/release/app-labor-release.apk (keep it in android/dist/, git-ignored)
+```
+
+**Settings → Labor.** «Audio während der Messung aufzeichnen» (off by default; switching it on
+asks once), and below it:
+
+- «Ereignis-Clips (±5 s, WAV 16 kHz)» (on): for every event, 5 s before its start to 5 s after its
+  end, at most 60 s (longer events: the first 60 s, flagged `truncated`). A 6 s ring buffer of the
+  48 kHz input provides the pre-roll; clips are resampled to 16 kHz with the app's anti-aliasing
+  filter (the classifier's, group delay removed) and written as 16-bit PCM.
+- «Durchgehend (AAC 64 kbit/s, Stundendateien)» (on): AAC-LC, mono, 16 kHz, one M4A per wall-clock
+  hour and at every start of a measurement. A file is finalised when the hour ends or the
+  measurement stops; if the app is killed, at most the current hour's file is lost.
+- «Clip-Rate»: a clip for every event, every 2nd or every 5th (the 1st is always kept).
+- «Maximaler Speicher» (default 2 GB): when the audio folder would exceed it, recording stops
+  and the banner says so; **measuring continues**.
+
+In addition, while recording is on, every classifier run (once per second) is logged to
+`classifier/<yyyyMMdd_HH>.jsonl`, also where no clip exists, so missed events stay visible.
+
+Settings apply from the next start of a measurement; switching recording off stops it at once.
+The section also shows the space used and the number of clips and hour files, and has
+«Ordner anzeigen», «Als ZIP teilen» and «Alle Aufnahmen löschen».
+
+**Where the files are:** `Android/data/ch.stadtlaerm.labor/files/audio/` on the phone's shared
+storage (`getExternalFilesDir(null)/audio`):
+
+```
+audio/manifest.jsonl                       one JSON object per line, appended
+audio/clips/ev_<eventId>_<yyyyMMdd_HHmmss>.wav
+audio/classifier/<yyyyMMdd_HH>.jsonl       one line per classifier run (≈ 1/s), appended
+audio/continuous/<yyyyMMdd_HH>.m4a         (_2, _3 … if the hour already has a file)
+```
+
+The folder is visible over USB (file transfer). Many file managers on the phone may no longer
+open `Android/data` since Android 11; then use «Als ZIP teilen» or USB.
+
+**Storage per night (8 h):** continuous ≈ 29 MB/h (64 kbit/s) ≈ 230 MB; clips ≈ 32 kB per second
+of clip, typically 0.3–0.5 MB each (at most 1.9 MB), e.g. 100 events ≈ 40 MB; classifier log
+≈ 0.35 kB per run ≈ 1.2 MB/h ≈ 10 MB; manifest < 1 MB (each clip line carries its trace, ≈ 0.35 kB
+per second of clip). Roughly 280 MB per night with everything on.
+
+**Classifier results** (`classifier/*.jsonl` lines and the `classifierTrace` array of a `clip`
+line): `time` = end of the 0.975 s model window (ISO-8601 with zone; the result describes the audio
+before it), `atMsInClip` (trace only: position of the window end in the clip), `top5` (AudioSet
+labels with scores), `category` / `categoryScore` (the category decision for this window; `null`
+if the window was ignored because it touched silenced/invalid audio, then `ignored: true`),
+`gainDb` (the level adjustment applied to the model input, 0–40 dB; 0 if switched off), `lafDb`
+(LAF at the window end) and `lafMaxDb` (highest LAF in the window), `endSample` (input sample at
+48 kHz, as in the `clock` lines); log lines also carry `session`. The event's own category is the
+decision on the *average* of the windows overlapping it (as in the public app).
+
+**Manifest lines** (`type`): `session_start` (device model, Android version, app version, audio
+source, encoding, effects, calibration id/offset, event threshold and floor, classifier settings,
+recording settings), `clock` (the engine's sample clock:
+input sample *s* at 48 kHz, counted from the start of the measurement, was recorded at
+`anchorEpochMs + (s − anchorSample)·1000/48000`; a new line after every clock correction, with
+`correctionMs`), `clip` (event id, event start/end ISO-8601 with zone, LAFmax, SEL, background,
+category, top-3 labels, file, `offsetOfEventStartInClipMs`, `truncated`, sample indices,
+`classifierTrace`: the classifier results whose window ends inside the clip),
+`continuous_open` / `continuous_close` (file, start time, `startInputSample`, codec, sample rate;
+16 kHz sample *j* of the file = input sample `startInputSample + 3·j + 2`), `gap` (blocks the
+encoder could not keep up with, filled with silence so the mapping holds), `storage_full`, and
+`session_stop` with the drop counts (clips skipped by the clip rate, dropped because the writer
+was busy or the storage full).
+
+**Sending data for analysis:** «Als ZIP teilen» zips the clips, the manifest and the classifier
+logs (and the hour files only if they total < 500 MB) and opens the share menu; it shows the size
+first. Hour files are best copied over USB (`Android/data/ch.stadtlaerm.labor/files/audio/continuous/`).
+
+**Performance.** The capture thread only copies (ring buffer, one block copy into a bounded
+queue) and never waits; resampling, WAV writing, logging and AAC encoding run on two
+background-priority threads. A finished clip waits up to 2.5 s for the classifier result that
+covers its last second, so its trace is complete. If they fall behind, data is dropped and counted in the manifest, never the measurement.
+
 ## Build
 
 ```sh
 export ANDROID_HOME=/path/to/android-sdk   # platform 35, build-tools 35.0.0
 ./gradlew test assembleDebug
-# APK: app/build/outputs/apk/debug/app-debug.apk
+# APKs: app/build/outputs/apk/public/debug/app-public-debug.apk   (the app)
+#       app/build/outputs/apk/labor/debug/app-labor-debug.apk     (Labor build, see below)
 ```
 
-`./gradlew assembleRelease` without a key produces an **unsigned** release APK
-(`app-release-unsigned.apk`), which Android will not install until it is signed.
+The app module has two product flavours (dimension `edition`): **`public`**, the published app,
+and **`labor`**, the unpublished diagnostics build. Tasks are named per variant, e.g.
+`assemblePublicDebug`, `testLaborDebugUnitTest`; `assembleDebug` / `test` run both.
+
+`./gradlew assemblePublicRelease` without a key produces an **unsigned** release APK
+(`app-public-release-unsigned.apk`), which Android will not install until it is signed.
 
 ### Signed release build
 
@@ -405,18 +513,20 @@ keyPassword=…
 Pass its path as a Gradle property or an environment variable:
 
 ```sh
-./gradlew test assembleRelease -Pstadtlaerm.keystoreProperties=$HOME/stadtlaerm-keys/keystore.properties
+./gradlew test assemblePublicRelease -Pstadtlaerm.keystoreProperties=$HOME/stadtlaerm-keys/keystore.properties
 # or
-STADTLAERM_KEYSTORE_PROPERTIES=$HOME/stadtlaerm-keys/keystore.properties ./gradlew assembleRelease
-# APK: app/build/outputs/apk/release/app-release.apk
+STADTLAERM_KEYSTORE_PROPERTIES=$HOME/stadtlaerm-keys/keystore.properties ./gradlew assemblePublicRelease
+# APK: app/build/outputs/apk/public/release/app-public-release.apk
 ```
 
 Check the result (build-tools 35):
 
 ```sh
-apksigner verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk   # v2 + v3, signer DN
-aapt2 dump permissions app/build/outputs/apk/release/app-release.apk                   # no INTERNET
-sha256sum app/build/outputs/apk/release/app-release.apk
+A=app/build/outputs/apk/public/release/app-public-release.apk
+apksigner verify --verbose --print-certs $A   # v2 + v3, signer DN
+aapt2 dump permissions $A                     # no INTERNET
+apkanalyzer dex packages $A | grep -c ch.stadtlaerm.app.labor   # 0: no Labor code (PRIVACY.md)
+sha256sum $A
 ```
 
 To publish, follow the release checklist below. The release key cannot be replaced without
@@ -425,9 +535,11 @@ forcing every user to uninstall and reinstall, so keep the keystore and its pass
 ### Release checklist
 
 1. Bump `versionName` and `versionCode` in `app/build.gradle.kts`; add a `CHANGELOG.md` entry.
-2. Build signed: `./gradlew test assembleRelease -Pstadtlaerm.keystoreProperties=…`; check the
-   signer certificate SHA-256 and that `aapt2 dump permissions` shows no `INTERNET` (see above).
-3. Copy `app/build/outputs/apk/release/app-release.apk` to `../docs/download/stadtlaerm.apk`.
+2. Build signed: `./gradlew test assemblePublicRelease -Pstadtlaerm.keystoreProperties=…`; check the
+   signer certificate SHA-256, that `aapt2 dump permissions` shows no `INTERNET` and that the dex
+   contains no Labor classes (see above and PRIVACY.md → «Labor-Build»).
+3. Copy `app/build/outputs/apk/public/release/app-public-release.apk` to
+   `../docs/download/stadtlaerm.apk`. **Never** copy a Labor APK into `../docs/`.
 4. Update `../docs/index.html`: version (button note, facts, «Stand des Projekts»), size in MB
    with a German decimal comma, SHA-256.
 5. Update `../docs/update.html`: `data-version` and `data-code` on `<main>`, and the static
@@ -459,6 +571,10 @@ dsp/   pure Kotlin/JVM, no Android dependencies — shared with the planned ESP3
 chart/ Android library: the history chart (drawing model, Compose Canvas) and the app theme;
        JVM tests and Paparazzi renders
 app/   Android: AudioRecord capture, foreground service, LiteRT YAMNet, Room, Compose UI
+  src/main/     shared code (AudioTap.kt: the no-op hook the Labor recorder plugs into)
+  src/public/   the published edition (AudioTapProvider → NoAudioTap, no extra UI)
+  src/labor/    Labor edition only: audio recorder, WAV/AAC writers, manifest, Labor UI, red icon
+  src/testLabor/ JVM tests of the Labor recorder parts
 tools/verify_yamnet.py    model I/O + Kotlin-vs-Python preprocessing check
 tools/csp_hash.py         CSP script hashes for the website's inline script (docs/update.html)
 ```

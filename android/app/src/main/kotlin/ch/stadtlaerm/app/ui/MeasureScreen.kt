@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.stadtlaerm.app.audio.AudioSourceSelector
 import ch.stadtlaerm.app.container
 import ch.stadtlaerm.app.data.EventEntity
+import ch.stadtlaerm.app.edition.EditionUi
 import ch.stadtlaerm.app.service.MeasurementService
 
 @Composable
@@ -233,6 +234,7 @@ fun EventRow(e: EventEntity) {
                 categoryName(context, e.dominantCategory ?: "n/a"), style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f), maxLines = 1,
             )
+            EditionUi.EventMarker(e.id)
         }
         HorizontalDivider(Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.surfaceVariant)
     }

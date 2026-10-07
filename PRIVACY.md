@@ -3,6 +3,11 @@
 Stadtlärm measures noise levels. It never records audio. This is the core promise of the
 project, and this page explains how the code keeps it, so anyone can check.
 
+Everything on this page is about the **public app** (`ch.stadtlaerm.app`, the APK on
+stadtlaerm.ch). Since v0.3.3 the repository can also build a separate diagnostics app that *can*
+record audio; it is a different app, is never published, and the public app contains none of its
+code. See [Labor-Build](#labor-build) below.
+
 ## Guarantees (app, since v0.1)
 
 1. **Raw audio never touches disk.** No code path writes samples to a file, a database, the
@@ -54,9 +59,74 @@ accordingly before you share them.
 - `aapt2 dump permissions stadtlaerm.apk` lists exactly: `RECORD_AUDIO`,
   `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `WAKE_LOCK`
   (plus AndroidX's internal `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`). No `INTERNET`.
-- Search the source: `grep -rn "FileOutputStream\|openFileOutput\|Socket\|HttpURLConnection" android/app android/dsp`
-  returns nothing in the audio path. The only file writes are the CSV/JSON exports in
+- Search the source of the public app: `grep -rn "FileOutputStream\|openFileOutput\|Socket\|HttpURLConnection" android/app/src/main android/app/src/public android/dsp/src/main`
+  returns nothing in the audio path (`android/app/src/labor/` is the separate Labor build, see below). The only file writes are the CSV/JSON exports in
   `android/app/.../data/Repositories.kt` and `android/app/.../ui/CalibrationViewModel.kt`, which contain aggregates only.
+
+## Labor-Build
+
+Since v0.3.3 the Android app has two product flavours (Gradle dimension `edition`):
+
+| | `public` | `labor` |
+|---|---|---|
+| App id / name | `ch.stadtlaerm.app`, «Stadtlärm» | `ch.stadtlaerm.labor`, «Stadtlärm Labor» (red icon) |
+| Published | yes: `docs/download/`, linked from stadtlaerm.ch | **never**: not in `docs/`, not linked from the website |
+| Can record audio | no — the code does not exist in this app | yes, only after switching it on, see below |
+
+The Labor build exists to debug the event detector and the sound-source classifier with real
+recordings. It is a separate app with its own app id (installed side by side, its own data); it
+is signed with the same key only so that it can be updated.
+
+**How the public app is kept free of recording code.** Android Gradle compiles a variant only
+from `app/src/main/` plus the source set of its flavour. All code that writes audio — the clip
+assembler, the WAV and AAC writers, the manifest, the Labor UI — lives exclusively in
+`app/src/labor/` (`ch.stadtlaerm.app.labor.*` and the Labor `ch.stadtlaerm.app.edition.*`), so it
+is not compiled into the public APK at all. The shared code only contains:
+
+- `app/src/main/kotlin/ch/stadtlaerm/app/audio/AudioTap.kt`: an interface through which a build
+  *could* see the capture blocks and the event lifecycle, and `NoAudioTap`, which does nothing;
+- `app/src/public/kotlin/ch/stadtlaerm/app/edition/Edition.kt`: the public `AudioTapProvider`,
+  which always returns `NoAudioTap`, and empty UI hooks;
+- in `MeasurementEngine`, listener hooks that report sample indices of event start/confirmation/
+  end, the clock anchor and each classifier result (label names, scores, gain and level — numbers
+  only; the default implementations do nothing).
+
+The public manifest and permissions are unchanged (no `INTERNET`, no storage permission).
+
+**How to verify** (any public build, e.g. `app/build/outputs/apk/public/release/app-public-release.apk`):
+
+1. Source: `find android/app/src -path '*labor*'` lists the only recording code;
+   `grep -rln "FileOutputStream\|MediaMuxer\|MediaCodec\|RIFF" android/app/src/main android/app/src/public android/dsp/src/main`
+   finds nothing; the only file writes there are the CSV/JSON exports (`writeText` in
+   `Repositories.kt` and `CalibrationViewModel.kt`), which contain aggregates only.
+2. The built APK: list its classes and strings, e.g. with the Android SDK (cmdline-tools,
+   build-tools 35)
+   ```sh
+   apkanalyzer dex packages app-public-release.apk | grep -c 'ch.stadtlaerm.app.labor'   # 0
+   unzip -o app-public-release.apk 'classes*.dex' -d dex/
+   for d in dex/classes*.dex; do dexdump "$d" | grep 'Class descriptor'; done \
+     | grep -iE 'labor|recorder|wav|aac|muxer|clipassembler'                              # nothing
+   for d in dex/classes*.dex; do strings "$d"; done \
+     | grep -E 'Landroid/media/MediaMuxer;|Landroid/media/MediaCodec;|RIFF|WAVE|manifest\.jsonl|ch/stadtlaerm/app/labor/'   # nothing
+   ```
+   For v0.3.3 this was checked on the signed public release APK (the one on stadtlaerm.ch,
+   SHA-256 `4fad06307d29f4ee088fdc4653acf48a39b29091a85214e7a0ee8d6b72fb0ac9`): `apkanalyzer` 0, `dexdump` lists 13401 classes and none of them
+   matches, and no dex string references `MediaMuxer`, `MediaCodec`, `RIFF`/`WAVE`,
+   `manifest.jsonl` or the `labor` package. As a control, the same commands on the Labor APK find
+   828 `ch.stadtlaerm.app.labor` entries and 98 matching strings.
+3. `aapt2 dump permissions` lists the same permissions as before (see «How to verify» above).
+
+**What the Labor build records** (only after «Einstellungen → Labor → Audio während der Messung
+aufzeichnen» is switched on and confirmed; off by default): event clips (WAV, 16 kHz, 5 s before to
+5 s after each event, at most 60 s) and/or a continuous recording (AAC, 16 kHz, 64 kbit/s, one file
+per hour), plus a `manifest.jsonl` with the event data and the classifier's per-second results for
+each clip, and `classifier/*.jsonl` with every classifier run (label names and scores, no audio). Files stay on the phone in
+`Android/data/ch.stadtlaerm.labor/files/audio/` until deleted in the app («Alle Aufnahmen löschen»)
+or by uninstalling it; they leave the phone only if the user shares them («Als ZIP teilen») or
+copies them over USB. A red banner on every screen says «LABOR-VERSION – kann Audio aufzeichnen»
+(and «Aufnahme läuft» while recording). The Labor app has no `INTERNET` permission either.
+Recordings can contain voices of people nearby; use the Labor build only where everyone recorded
+knows about it.
 
 ## The website
 

@@ -4,6 +4,7 @@ import ch.stadtlaerm.dsp.classify.CategoryDecision
 import ch.stadtlaerm.dsp.classify.CategoryMapper
 import ch.stadtlaerm.dsp.classify.ClassifierFrame
 import ch.stadtlaerm.dsp.classify.ClassifierPreprocessor
+import ch.stadtlaerm.dsp.classify.ClassifierResult
 import ch.stadtlaerm.dsp.classify.LabelScore
 import java.time.ZoneId
 import kotlin.math.abs
@@ -87,6 +88,30 @@ class MeasurementEngine(
         fun onClassification(endEpochMs: Long, decision: CategoryDecision, top: List<LabelScore>) {}
         /** The sample clock was re-anchored by [correctionMs] (wall − sample time). */
         fun onClockCorrection(correctionMs: Long) {}
+
+        // Diagnostics hooks (used by the Labor build's recorder; no-ops by default). Sample
+        // indices count input samples since the start, like [MeasurementEngine.totalSamples].
+
+        /**
+         * The sample clock was anchored (first block) or re-anchored (after a correction): from
+         * now on `epochMsAt(s) = anchorEpochMs + floorDiv((s − anchorSample)·1000, sampleRate)`.
+         */
+        fun onClockAnchored(anchorSample: Long, anchorEpochMs: Long) {}
+        /** LAF crossed the start threshold at [startSample] (candidate, not yet an event). */
+        fun onEventCandidate(startSample: Long) {}
+        /** The candidate starting at [startSample] reached the minimum duration and the floor. */
+        fun onEventConfirmed(startSample: Long) {}
+        /** The candidate starting at [startSample] ended without being confirmed. */
+        fun onEventDiscarded(startSample: Long) {}
+        /** The confirmed event [startSample, endSample) ended; [onEventEmitted] follows (≤ 3 s later). */
+        fun onEventClosed(startSample: Long, endSample: Long) {}
+        /** The event with its input-sample span; by default forwards to [onEvent]. */
+        fun onEventEmitted(event: NoiseEvent, startSample: Long, endSample: Long) = onEvent(event)
+        /**
+         * Every classifier frame delivered to [onClassifierFrame], including windows that are
+         * ignored because they overlap invalid audio (then `decision == null`).
+         */
+        fun onClassifierResult(result: ClassifierResult) {}
     }
 
     private val fs = config.sampleRate
@@ -172,6 +197,13 @@ class MeasurementEngine(
         var detected: DetectedEvent? = null
     }
 
+    // Recent tick levels (diagnostics only: LAF of classifier windows in onClassifierResult).
+    private val recentTicks = 96 // 12 s
+    private val recentTickEnd = LongArray(recentTicks) { Long.MIN_VALUE }
+    private val recentTickLaf = DoubleArray(recentTicks)
+    private val recentTickLafMax = DoubleArray(recentTicks)
+    private var recentTickPos = 0
+
     private var activeAcc: EventAcc? = null
     private val pending = ArrayList<EventAcc>()
     private val labelCount = mapper?.labels?.size ?: 0
@@ -187,6 +219,7 @@ class MeasurementEngine(
         listener = object : EventDetector.Listener {
             override fun onCandidateStart(startSample: Long) {
                 activeAcc = EventAcc(startSample, labelCount)
+                listener.onEventCandidate(startSample)
             }
 
             override fun onConfirmed(startSample: Long) {
@@ -198,14 +231,17 @@ class MeasurementEngine(
                 } else if (recording) {
                     minuteEvents++
                 }
+                listener.onEventConfirmed(startSample)
             }
 
             override fun onDiscarded(startSample: Long) {
                 activeAcc = null
                 releaseHeldMinute()
+                listener.onEventDiscarded(startSample)
             }
 
             override fun onClosed(event: DetectedEvent) {
+                listener.onEventClosed(event.startSample, event.endSample)
                 val acc = activeAcc ?: EventAcc(event.startSample, labelCount)
                 activeAcc = null
                 acc.detected = event
@@ -238,6 +274,7 @@ class MeasurementEngine(
             anchored = true
             anchorSample = blockEnd
             anchorMs = deliveredMs
+            listener.onClockAnchored(anchorSample, anchorMs)
         }
         val drift = deliveredMs - epochMsAt(blockEnd)
         if (drift < minDriftMs) minDriftMs = drift
@@ -325,6 +362,10 @@ class MeasurementEngine(
             detector.interrupt(endSample - tickLen)
         }
         listener.onTick(LafTick(endSample, nowMs, laf, lafMaxTick, leqTick, valid))
+        recentTickEnd[recentTickPos] = endSample
+        recentTickLaf[recentTickPos] = if (valid) laf else Double.NaN
+        recentTickLafMax[recentTickPos] = if (valid) lafMaxTick else Double.NaN
+        recentTickPos = (recentTickPos + 1) % recentTicks
         resetTick()
 
         if (secTicks == 8) endSecond(endSample, nowMs)
@@ -426,6 +467,7 @@ class MeasurementEngine(
         anchorMs += drift
         minuteClockCorrections++
         listener.onClockCorrection(drift)
+        listener.onClockAnchored(anchorSample, anchorMs)
     }
 
     // ---- Classifier interface -------------------------------------------------------------
@@ -456,8 +498,12 @@ class MeasurementEngine(
         val m = mapper ?: return
         val windowStart = frame.endSample - frame.windowSamples48k
         // Windows touching silenced/invalid audio say nothing about the real sound: ignore them.
-        if (overlapsInvalid(windowStart, frame.endSample)) return
+        if (overlapsInvalid(windowStart, frame.endSample)) {
+            reportClassifierResult(frame, m, null)
+            return
+        }
         val decision = m.decide(frame.scores)
+        reportClassifierResult(frame, m, decision)
         listener.onClassification(epochMsAt(frame.endSample), decision, m.topLabels(frame.scores, 3))
         if (recording) {
             val b = bucketIds.indexOf(decision.dominant)
@@ -482,6 +528,35 @@ class MeasurementEngine(
                 emitEvent(acc)
             }
         }
+    }
+
+    /** Diagnostics: the frame's top-5 labels, decision, input gain and the LAF during the window. */
+    private fun reportClassifierResult(frame: ClassifierFrame, m: CategoryMapper, decision: CategoryDecision?) {
+        val windowStart = frame.endSample - frame.windowSamples48k
+        var lafAtEnd = Double.NaN
+        var lafAtEndSample = Long.MIN_VALUE
+        var lafMax = Double.NaN
+        for (i in 0 until recentTicks) {
+            val end = recentTickEnd[i]
+            if (end == Long.MIN_VALUE) continue
+            if (end <= frame.endSample && end > lafAtEndSample) { lafAtEndSample = end; lafAtEnd = recentTickLaf[i] }
+            // Tick [end − tickLen, end) overlaps the window [windowStart, endSample).
+            val mx = recentTickLafMax[i]
+            if (end > windowStart && end - tickLen < frame.endSample && !mx.isNaN() && (lafMax.isNaN() || mx > lafMax)) lafMax = mx
+        }
+        listener.onClassifierResult(
+            ClassifierResult(
+                endSample = frame.endSample,
+                windowSamples48k = frame.windowSamples48k,
+                endEpochMs = epochMsAt(frame.endSample),
+                top = m.topLabels(frame.scores, 5),
+                decision = decision,
+                inputGainDb = frame.inputGainDb,
+                lafDb = lafAtEnd,
+                lafMaxDb = lafMax,
+                ignoredInvalid = decision == null,
+            )
+        )
     }
 
     private fun finalizePending(force: Boolean) {
@@ -515,7 +590,7 @@ class MeasurementEngine(
             }
         }
         val startMs = epochMsAt(ev.startSample)
-        listener.onEvent(
+        listener.onEventEmitted(
             NoiseEvent(
                 startEpochMs = startMs,
                 startIso = Iso.format(startMs, config.zone, millis = true),
@@ -532,7 +607,9 @@ class MeasurementEngine(
                 audioSource = config.audioSource,
                 calibrated = config.calibrated,
                 minLevelDb = ev.minLevelDb,
-            )
+            ),
+            ev.startSample,
+            ev.endSample,
         )
     }
 

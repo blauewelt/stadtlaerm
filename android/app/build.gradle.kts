@@ -42,8 +42,8 @@ android {
         applicationId = "ch.stadtlaerm.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.3.2"
+        versionCode = 7
+        versionName = "0.3.3"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
     }
 
@@ -57,6 +57,24 @@ android {
                 enableV2Signing = true
                 enableV3Signing = true
             }
+        }
+    }
+
+    // Two editions (see PRIVACY.md → «Labor-Build»):
+    // - public: the app that is published. Its source sets contain NO code that writes audio.
+    // - labor:  a diagnostics build that can record audio (event clips, continuous AAC) for
+    //           debugging the event detector and the classifier. All recording code lives in
+    //           src/labor/ only. Never published on the website.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("public") {
+            dimension = "edition"
+            isDefault = true
+        }
+        create("labor") {
+            dimension = "edition"
+            applicationId = "ch.stadtlaerm.labor"
+            versionNameSuffix = "-labor"
         }
     }
 
@@ -137,5 +155,10 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
-    systemProperty("stadtlaerm.generatedDb", layout.buildDirectory.dir("generated/ksp/debug/kotlin/ch/stadtlaerm/app/data").get().asFile.absolutePath)
+    // testPublicDebugUnitTest → generated/ksp/publicDebug/…
+    val variant = name.removePrefix("test").removeSuffix("UnitTest").replaceFirstChar { it.lowercase() }
+    systemProperty(
+        "stadtlaerm.generatedDb",
+        layout.buildDirectory.dir("generated/ksp/$variant/kotlin/ch/stadtlaerm/app/data").get().asFile.absolutePath,
+    )
 }

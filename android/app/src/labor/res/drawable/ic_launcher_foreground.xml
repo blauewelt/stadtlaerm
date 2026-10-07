@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Labor edition: the public icon's level bars plus a white "record" dot (top left, inside the
+     66 dp safe zone), on the red background of ic_launcher_background. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="@color/icon_foreground" android:pathData="M34,58h7v14h-7z" />
+    <path android:fillColor="@color/icon_foreground" android:pathData="M46,48h7v24h-7z" />
+    <path android:fillColor="@color/icon_foreground" android:pathData="M58,40h7v32h-7z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M70,32h7v40h-7z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M38,37m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0" />
+    <path android:fillColor="#FFB3261E"
+        android:pathData="M38,37m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+</vector>

@@ -20,9 +20,14 @@ import androidx.core.content.ContextCompat
 import ch.stadtlaerm.app.R
 import ch.stadtlaerm.app.audio.AudioCapture
 import ch.stadtlaerm.app.audio.AudioSourceSelector
+import ch.stadtlaerm.app.audio.AudioTap
+import ch.stadtlaerm.app.audio.AudioTapSession
+import ch.stadtlaerm.app.audio.NoAudioTap
+import ch.stadtlaerm.app.edition.AudioTapProvider
 import ch.stadtlaerm.app.classify.YamnetClassifier
 import ch.stadtlaerm.app.container
 import ch.stadtlaerm.app.ui.MainActivity
+import ch.stadtlaerm.dsp.Acoustics
 import ch.stadtlaerm.dsp.EngineConfig
 import ch.stadtlaerm.dsp.LafTick
 import ch.stadtlaerm.dsp.MeasurementEngine
@@ -32,16 +37,20 @@ import ch.stadtlaerm.dsp.SecondResult
 import ch.stadtlaerm.dsp.classify.CategoryDecision
 import ch.stadtlaerm.dsp.classify.ClassifierFrame
 import ch.stadtlaerm.dsp.classify.ClassifierPreprocessor
+import ch.stadtlaerm.dsp.classify.ClassifierResult
 import ch.stadtlaerm.dsp.classify.LabelScore
 import ch.stadtlaerm.dsp.classify.SoundClassifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.ZoneId
-import java.util.Locale
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.RejectedExecutionException
@@ -83,7 +92,12 @@ class MeasurementService : Service() {
     companion object {
         const val ACTION_START = "ch.stadtlaerm.app.START"
         const val ACTION_STOP = "ch.stadtlaerm.app.STOP"
-        private const val CHANNEL = "measurement"
+        /**
+         * Since 0.3.3 importance DEFAULT (icon in the status bar). A channel's importance cannot be
+         * raised after it was created, hence a new id; the old LOW channel is deleted.
+         */
+        private const val CHANNEL = "measurement_active"
+        private const val LEGACY_CHANNEL = "measurement"
         private const val TAG = "MeasurementService"
         private const val NOTIFICATION_ID = 1
 
@@ -99,6 +113,8 @@ class MeasurementService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var capture: AudioCapture? = null
     private var engine: MeasurementEngine? = null
+    /** Public build: always [NoAudioTap] (see AudioTap.kt, PRIVACY.md → «Labor-Build»). */
+    @Volatile private var tap: AudioTap = NoAudioTap
     private var classifier: SoundClassifier? = null
     private var inference: ExecutorService? = null
     private val inferenceBusy = AtomicBoolean(false)
@@ -108,6 +124,21 @@ class MeasurementService : Service() {
     private var lastNotificationMs = 0L
     @Volatile private var stopping = false
     @Volatile private var normalizeClassifierInput = true
+    /** Database inserts still running; a stop waits for them (briefly) before leaving the foreground. */
+    private val dbJobs: MutableSet<Job> = java.util.Collections.synchronizedSet(HashSet())
+
+    private fun persist(what: String, block: suspend () -> Unit) {
+        val job = scope.launch {
+            try {
+                block()
+            } catch (e: Exception) {
+                // Never log data, only the failure type.
+                Log.w(TAG, "$what insert failed: ${e.javaClass.simpleName}")
+            }
+        }
+        dbJobs += job
+        job.invokeOnCompletion { dbJobs -= job }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -180,6 +211,8 @@ class MeasurementService : Service() {
                         return@launch
                     }
                     engine = eng
+                    val t = AudioTapProvider.create(this@MeasurementService)
+                    tap = t
                     if (settings.wakeLock) acquireWakeLock()
                     val cap = AudioCapture(
                         this@MeasurementService, ::onBlock,
@@ -195,6 +228,16 @@ class MeasurementService : Service() {
                     )
                     val info = cap.start(source)
                     capture = cap
+                    t.onSessionStart(
+                        AudioTapSession(
+                            startedAtMs = System.currentTimeMillis(), audioSource = info.source, encoding = info.encoding,
+                            effects = info.effects, calibrationId = cal.id, calibrationOffsetDb = cal.offsetDb,
+                            calibrated = cal.calibrated, eventThresholdDb = config.eventThresholdDb,
+                            eventMinLevelDb = config.eventMinLevelDb, classifierEnabled = settings.classifierEnabled,
+                            classifierNormalize = settings.classifierNormalize,
+                            classifierIntervalSeconds = config.classifierIntervalSeconds,
+                        )
+                    )
                     live.value = LiveState(
                         running = true, startedAtMs = System.currentTimeMillis(), audioSource = info.source,
                         encoding = info.encoding, effects = info.effects, calibrated = cal.calibrated,
@@ -235,6 +278,7 @@ class MeasurementService : Service() {
         // Deliver finished classifications first, so an event ending in this block can use them.
         while (true) eng.onClassifierFrame(frames.poll() ?: break)
         eng.process(samples, count)
+        tap.onBlock(samples, count, Acoustics.SAMPLE_RATE, System.currentTimeMillis())
         val cls = classifier ?: return
         val exec = inference ?: return
         if (eng.classifierDue() && inferenceBusy.compareAndSet(false, true)) {
@@ -244,9 +288,9 @@ class MeasurementService : Service() {
             val normalize = normalizeClassifierInput
             exec.execute {
                 try {
-                    if (normalize) ClassifierPreprocessor.normalize(window)
+                    val gainDb = if (normalize) ClassifierPreprocessor.normalize(window) else 0.0
                     val scores = cls.classify(window)
-                    frames.add(ClassifierFrame(end, eng.classifierWindowLength48k, scores))
+                    frames.add(ClassifierFrame(end, eng.classifierWindowLength48k, scores, gainDb))
                 } catch (_: Exception) {
                     // A failed inference only loses one classification frame.
                 } finally {
@@ -275,12 +319,10 @@ class MeasurementService : Service() {
             val now = System.currentTimeMillis()
             if (now - lastNotificationMs >= 2000) {
                 lastNotificationMs = now
-                val text = if (l.value.micSilenced || second.validFraction == 0.0) {
-                    "Mikrofon vom System stummgeschaltet – Zeit wird nicht gewertet"
-                } else {
-                    String.format(Locale.GERMANY, "LAeq (1 min): %.1f dB(A)%s", second.laeqRunning60sDb,
-                        if (l.value.calibrated) "" else " · unkalibriert")
-                }
+                val text = MeasurementNotification.text(
+                    laeqDb = second.laeqRunning60sDb, calibrated = l.value.calibrated,
+                    silenced = l.value.micSilenced || second.validFraction == 0.0, note = tap.notificationNote,
+                )
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text))
             }
         }
@@ -288,29 +330,28 @@ class MeasurementService : Service() {
         override fun onMinute(minute: MinuteRecord) {
             val l = container.live
             l.update { it.copy(lastMinute = minute) }
-            scope.launch {
-                try {
-                    container.measurements.insert(minute)
-                } catch (e: Exception) {
-                    // Never log data, only the failure type.
-                    Log.w(TAG, "minute insert failed: ${e.javaClass.simpleName}")
-                }
-            }
+            persist("minute") { container.measurements.insert(minute) }
         }
 
-        override fun onEvent(event: NoiseEvent) {
-            scope.launch {
-                try {
-                    container.measurements.insert(event)
-                } catch (e: Exception) {
-                    Log.w(TAG, "event insert failed: ${e.javaClass.simpleName}")
-                }
+        override fun onEventEmitted(event: NoiseEvent, startSample: Long, endSample: Long) {
+            val t = tap
+            persist("event") {
+                val id = container.measurements.insert(event)
+                t.onEventStored(id, event, startSample, endSample)
             }
         }
 
         override fun onClockCorrection(correctionMs: Long) {
             Log.i(TAG, "sample clock re-anchored by $correctionMs ms")
+            tap.onClockCorrection(correctionMs)
         }
+
+        override fun onClockAnchored(anchorSample: Long, anchorEpochMs: Long) = tap.onClockAnchor(anchorSample, anchorEpochMs)
+        override fun onEventCandidate(startSample: Long) = tap.onEventStarted(startSample)
+        override fun onEventConfirmed(startSample: Long) = tap.onEventConfirmed(startSample)
+        override fun onEventDiscarded(startSample: Long) = tap.onEventDiscarded(startSample)
+        override fun onEventClosed(startSample: Long, endSample: Long) = tap.onEventEnded(startSample, endSample)
+        override fun onClassifierResult(result: ClassifierResult) = tap.onClassifierResult(result.endEpochMs, result)
 
         override fun onClassification(endEpochMs: Long, decision: CategoryDecision, top: List<LabelScore>) {
             container.live.update {
@@ -331,14 +372,44 @@ class MeasurementService : Service() {
             eng.stop()
         }
         engine = null
+        tap.onSessionStop()
+        tap = NoAudioTap
         releaseClassifier()
         frames.clear()
         classifierWindow = FloatArray(ClassifierPreprocessor.YAMNET_INPUT_SAMPLES)
         releaseWakeLock()
         val err = container.live.value.error
         container.live.value = LiveState(error = err, lastMinute = container.live.value.lastMinute)
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        // engine.stop() has just emitted the partial minute and the open event. Stay in the
+        // foreground until they are in the database (at most 3 s): after the task was swiped away
+        // the process may be killed as soon as the service is gone.
+        val pending = synchronized(dbJobs) { dbJobs.toList() }
+        scope.launch {
+            withTimeoutOrNull(3_000) { pending.joinAll() }
+            withContext(Dispatchers.Main) {
+                synchronized(this@MeasurementService) {
+                    // A new measurement may have been started in the meantime: leave it alone.
+                    if (!stopping) return@withContext
+                }
+                ServiceCompat.stopForeground(this@MeasurementService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+    }
+
+    /**
+     * The app's task was swiped away. By default the measurement continues (foreground service,
+     * notification with «Stopp»); with «Messung beenden, wenn die App geschlossen wird» it stops
+     * exactly like «Stopp», including the partial minute.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val live = container.live.value
+        val action = TaskRemovedPolicy.onTaskRemoved(
+            stopOnTaskRemoved = container.settings.state.value.stopOnTaskRemoved,
+            running = live.running, starting = live.starting,
+        )
+        if (action == TaskRemovedPolicy.Action.STOP) stopMeasurement()
+        super.onTaskRemoved(rootIntent)
     }
 
     /**
@@ -353,7 +424,7 @@ class MeasurementService : Service() {
         val shortType = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE else 0
         val micType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
         val first = if (Build.VERSION.SDK_INT >= 34 && !hasMic) shortType else micType
-        val text = if (hasMic) "Messung startet …" else "Mikrofon-Berechtigung fehlt"
+        val text = if (hasMic) MeasurementNotification.STARTING else MeasurementNotification.NO_PERMISSION
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(text), first)
             return if (first == micType) Promotion.MICROPHONE else Promotion.SHORT_SERVICE
@@ -399,10 +470,15 @@ class MeasurementService : Service() {
 
     private fun createChannel() {
         val nm = getSystemService(NotificationManager::class.java)
+        if (nm.getNotificationChannel(LEGACY_CHANNEL) != null) nm.deleteNotificationChannel(LEGACY_CHANNEL)
         if (nm.getNotificationChannel(CHANNEL) == null) {
+            // DEFAULT: visible in the status bar. No sound or vibration (the notification is
+            // updated every 2 s and must never make a noise during a night measurement).
             nm.createNotificationChannel(
-                NotificationChannel(CHANNEL, getString(R.string.notif_channel_name), NotificationManager.IMPORTANCE_LOW).apply {
+                NotificationChannel(CHANNEL, getString(R.string.notif_channel_name), NotificationManager.IMPORTANCE_DEFAULT).apply {
                     description = getString(R.string.notif_channel_desc)
+                    setSound(null, null)
+                    enableVibration(false)
                     setShowBadge(false)
                 }
             )
@@ -420,7 +496,7 @@ class MeasurementService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_level)
-            .setContentTitle("Stadtlärm misst")
+            .setContentTitle(MeasurementNotification.TITLE)
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

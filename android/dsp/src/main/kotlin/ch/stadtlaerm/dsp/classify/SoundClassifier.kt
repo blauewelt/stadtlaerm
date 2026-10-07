@@ -18,8 +18,40 @@ interface SoundClassifier : AutoCloseable {
     fun classify(window: FloatArray): FloatArray
 }
 
-/** Classifier output tied to the measurement timeline (end of window in 48 kHz input samples). */
-class ClassifierFrame(val endSample: Long, val windowSamples48k: Long, val scores: FloatArray)
+/**
+ * Classifier output tied to the measurement timeline (end of window in 48 kHz input samples).
+ * [inputGainDb]: the gain [ClassifierPreprocessor.normalize] applied to this window (0 if off).
+ */
+class ClassifierFrame(
+    val endSample: Long,
+    val windowSamples48k: Long,
+    val scores: FloatArray,
+    val inputGainDb: Double = 0.0,
+)
+
+/**
+ * One classifier run as seen by the engine, for diagnostics (numbers and label names only).
+ *
+ * @param top the 5 best AudioSet labels of this window
+ * @param decision the category decision for this window; null if the window was ignored
+ *   because it overlapped silenced/invalid audio ([ignoredInvalid])
+ * @param lafDb LAF (dB(A), with the calibration offset) of the last 125 ms tick ending at or
+ *   before the window end; NaN if unknown
+ * @param lafMaxDb highest tick LAFmax within the window; NaN if unknown
+ */
+data class ClassifierResult(
+    val endSample: Long,
+    val windowSamples48k: Long,
+    val endEpochMs: Long,
+    val top: List<LabelScore>,
+    val decision: CategoryDecision?,
+    val inputGainDb: Double,
+    val lafDb: Double,
+    val lafMaxDb: Double,
+    val ignoredInvalid: Boolean,
+) {
+    val startSample: Long get() = endSample - windowSamples48k
+}
 
 /**
  * Input conditioning for the classifier.
