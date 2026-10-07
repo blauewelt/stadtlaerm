@@ -120,7 +120,7 @@ class ChartModel(
         const val MIN_GAP_MS = 10 * Windows.MINUTE_MS
         /** Week view: an hour needs this many valid minutes. */
         const val MIN_VALID_MINUTES_PER_HOUR = 30
-        /** Week view: only events at least this loud (and ≥ the floor) are drawn … */
+        /** Week view: only events of the highlighted category at least this loud (and ≥ the floor) are drawn … */
         const val WEEK_EVENT_MIN_DB = 60.0
         /** … and at most this many (the loudest). */
         const val WEEK_EVENT_CAP = 300
@@ -146,7 +146,8 @@ class ChartModel(
             var shown = floored
             var capped = false
             if (hourly) {
-                shown = floored.filter { it.lafMaxDb >= maxOf(eventFloorDb, WEEK_EVENT_MIN_DB) }
+                // Week: only the highlighted category is drawn (a wall of grey dots says nothing).
+                shown = floored.filter { it.dominantCategory == highlight && it.lafMaxDb >= maxOf(eventFloorDb, WEEK_EVENT_MIN_DB) }
                 if (shown.size > WEEK_EVENT_CAP) {
                     capped = true
                     shown = shown.sortedByDescending { it.lafMaxDb }.take(WEEK_EVENT_CAP)
@@ -319,17 +320,25 @@ class ChartModel(
     }
 }
 
-/** Time formatting for chart texts (local zone; with weekday in the week view). */
-class TimeFmt(val zone: ZoneId, private val withWeekday: Boolean) {
+/**
+ * Time formatting for chart texts (local zone): «23:40», with [withWeekday] «Sa 23:40», with
+ * [withDate] «Sa 10.10. 23:40».
+ */
+class TimeFmt(val zone: ZoneId, private val withWeekday: Boolean, private val withDate: Boolean = false) {
     private val hm = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT)
     private val hms = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.ROOT)
+    private fun prefix(d: java.time.LocalDate): String = when {
+        withDate -> "${Windows.weekday(d)} ${d.dayOfMonth}.${d.monthValue}. "
+        withWeekday -> Windows.weekday(d) + " "
+        else -> ""
+    }
     fun hm(t: Long): String {
         val z = Instant.ofEpochMilli(t).atZone(zone)
-        return (if (withWeekday) Windows.weekday(z.toLocalDate()) + " " else "") + z.format(hm)
+        return prefix(z.toLocalDate()) + z.format(hm)
     }
     fun hms(t: Long): String {
         val z = Instant.ofEpochMilli(t).atZone(zone)
-        return (if (withWeekday) Windows.weekday(z.toLocalDate()) + " " else "") + z.format(hms)
+        return prefix(z.toLocalDate()) + z.format(hms)
     }
 }
 

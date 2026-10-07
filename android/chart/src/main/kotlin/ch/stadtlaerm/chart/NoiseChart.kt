@@ -349,7 +349,8 @@ private fun DrawScope.drawSelection(l: ChartLayout, s: Selection, lines: List<Te
 
 /** Tooltip text for a selection. */
 fun tooltipLines(s: Selection, model: ChartModel): List<String> {
-    val fmt = TimeFmt(model.zone, model.window.mode == RangeMode.WEEK)
+    // Night: the time is enough. Day and week: weekday and date first («Sa 10.10. 23:40:30»).
+    val fmt = TimeFmt(model.zone, withWeekday = false, withDate = model.window.mode != RangeMode.NIGHT)
     return when (s) {
         is Selection.Point -> {
             val p = s.point

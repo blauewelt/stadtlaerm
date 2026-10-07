@@ -59,16 +59,18 @@ The **Nächte** tab starts with a chart of the measured levels, drawn by the app
   below opens it in the chart.
 - **Marks:** a band from L90 to L10 (the background), the LAeq line per minute, and every event
   as a dot at (start, LAFmax). One category is highlighted in orange and drawn on top (default
-  Töff & Poser; chosen with the chips under the chart and remembered), all others grey. Night
+  Töff & Poser; chosen with the scrolling row of chips under the chart and remembered; the
+  selected chip carries the same orange dot), all others grey. Night
   periods are shaded. The y axis runs from the lowest L90 − 5 dB to the loudest shown event or
   LAeq + 5 dB (rounded to 5 dB, at least 30 dB).
 - **Gaps:** the line and band are never drawn across a missing minute or one with < 50 % valid
   audio; spans of 10 min or more get a light «keine Messung» area. Time after now is not a gap.
 - **Week view:** hourly values (energy mean over the valid minutes, weighted by their valid
   seconds; L10 = maximum and L90 = minimum of the minute values; an hour needs 30 valid
-  minutes). Only events ≥ max(floor, 60 dB(A)) are drawn, at most the loudest 300.
+  minutes). Only events of the highlighted category ≥ max(floor, 60 dB(A)) are drawn, at most
+  the loudest 300; the event count in the summary still includes all events.
 - **Touch:** a tap shows a crosshair and a tooltip for the nearest minute (hour), or for an
-  event dot within 16 dp; while the tooltip is open, dragging sideways moves the crosshair.
+  event dot within 16 dp (in the day and week views with weekday and date); while the tooltip is open, dragging sideways moves the crosshair.
   Tapping the tooltip (or outside the plot) closes it.
 - **Summary:** LAeq of the window (same rule as the night summaries), number of events (and of
   the highlighted category), the loudest event, the measured share of the time and any

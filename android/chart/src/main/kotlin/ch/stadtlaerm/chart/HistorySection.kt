@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -78,10 +81,11 @@ fun HistorySection(
     val palette = ChartPalette.current()
     val highlightName = ChartCategories.name(highlight)
 
-    Column(modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val margin = 16.dp
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // 1. Range and navigation.
         val modes = listOf(RangeMode.NIGHT to "Nacht", RangeMode.DAY to "Tag", RangeMode.WEEK to "Woche")
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = margin)) {
             modes.forEachIndexed { i, (m, label) ->
                 SegmentedButton(
                     selected = window.mode == m,
@@ -90,7 +94,7 @@ fun HistorySection(
                 ) { Text(label) }
             }
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = margin), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { actions.onShift(-1) }, modifier = Modifier.semantics { contentDescription = "früher" }) {
                 Text("‹", style = MaterialTheme.typography.headlineMedium)
             }
@@ -109,7 +113,7 @@ fun HistorySection(
         Card(
             colors = CardDefaults.cardColors(containerColor = cardColor),
             border = BorderStroke(1.dp, scheme.outlineVariant),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = margin),
         ) {
             Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 8.dp)) {
                 Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -136,12 +140,13 @@ fun HistorySection(
                 }
                 if (model != null && model.eventsCapped) {
                     Text(
-                        "Gezeigt: die ${ChartModel.WEEK_EVENT_CAP} lautesten Ereignisse ab ${ChartFmt.db(maxOf(eventFloorDb, ChartModel.WEEK_EVENT_MIN_DB), 0)} dB(A).",
+                        "Wochenansicht: Stundenwerte; gezeichnet sind nur die ${ChartModel.WEEK_EVENT_CAP} lautesten Ereignisse der hervorgehobenen Kategorie ab ${ChartFmt.db(maxOf(eventFloorDb, ChartModel.WEEK_EVENT_MIN_DB), 0)} dB(A).",
                         style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant,
                     )
                 } else if (window.mode == RangeMode.WEEK) {
                     Text(
-                        "Wochenansicht: Stundenwerte; Ereignisse ab ${ChartFmt.db(maxOf(eventFloorDb, ChartModel.WEEK_EVENT_MIN_DB), 0)} dB(A).",
+                        "Wochenansicht: Stundenwerte; gezeichnet sind nur Ereignisse der hervorgehobenen Kategorie ab " +
+                            "${ChartFmt.db(maxOf(eventFloorDb, ChartModel.WEEK_EVENT_MIN_DB), 0)} dB(A).",
                         style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant,
                     )
                 }
@@ -152,22 +157,35 @@ fun HistorySection(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     LegendItem(Swatch.Dot(palette.series2), "$highlightName (hervorgehoben)")
-                    LegendItem(Swatch.Dot(scheme.onSurfaceVariant.copy(alpha = 0.55f).compositeOver(cardColor)), "andere Ereignisse")
+                    if (window.mode != RangeMode.WEEK) {
+                        LegendItem(Swatch.Dot(scheme.onSurfaceVariant.copy(alpha = 0.55f).compositeOver(cardColor)), "andere Ereignisse")
+                    }
                     LegendItem(Swatch.Line(palette.series1), if (window.mode == RangeMode.WEEK) "LAeq pro Stunde" else "LAeq pro Minute")
                     LegendItem(Swatch.Band(palette.series1.copy(alpha = palette.bandAlpha).compositeOver(cardColor)), "Hintergrund L90–L10")
                 }
             }
         }
-        // Category chips: which category is emphasised.
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            for ((id, name) in ChartCategories.all) {
-                FilterChip(selected = highlight == id, onClick = { actions.onHighlight(id) }, label = { Text(name) })
+        // Category chips (one scrolling row): which category is emphasised. The selected chip
+        // carries an orange dot like the highlighted events.
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = margin),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            items(ChartCategories.all, key = { it.first }) { (id, name) ->
+                val selected = highlight == id
+                FilterChip(
+                    selected = selected, onClick = { actions.onHighlight(id) }, label = { Text(name) },
+                    leadingIcon = if (selected) {
+                        { Canvas(Modifier.size(10.dp)) { drawCircle(palette.series2) } }
+                    } else null,
+                )
             }
         }
 
         // 3. Summary.
         val s = model?.summary
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = margin), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile("LAeq", s?.let { "${ChartFmt.db(it.laeqDb)} dB(A)" } ?: "–", if (s?.anyUncalibrated == true) "unkalibriert" else null, Modifier.weight(1f))
             StatTile("Ereignisse", s?.eventCount?.toString() ?: "–", s?.let { "${it.highlightCount} $highlightName" }, Modifier.weight(1f))
             val loud = s?.loudest
@@ -179,7 +197,10 @@ fun HistorySection(
         if (s != null && model?.isEmpty == false) {
             val parts = listOf("Messung ${ChartFmt.percent(s.coverage)} der Zeit") + s.gapTexts.take(2) +
                 (if (s.gapTexts.size > 2) listOf(if (s.gapTexts.size == 3) "1 weitere Lücke" else "${s.gapTexts.size - 2} weitere Lücken") else emptyList())
-            Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+            Text(
+                parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = margin),
+            )
         }
     }
 }

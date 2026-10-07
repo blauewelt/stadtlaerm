@@ -144,22 +144,31 @@ class ChartModelTest {
     }
 
     @Test
-    fun weekShowsOnlyLoudEventsCappedAt300() {
+    fun weekDrawsOnlyLoudHighlightedEventsCappedAt300() {
         val d = SyntheticData.weekData()
         val w = d.window
-        val many = (0 until 400).map { i -> event(w.startMs + i * 1_200_000L, 61.0 + (i % 20)) } +
-            (0 until 50).map { i -> event(w.startMs + i * 3_600_000L + 600_000, 55.0) } // below 60: never drawn
+        val many = (0 until 400).map { i -> event(w.startMs + i * 1_200_000L, 61.0 + (i % 20), "loud_vehicle") } +
+            (0 until 50).map { i -> event(w.startMs + i * 3_600_000L + 600_000, 55.0, "loud_vehicle") } + // below 60
+            (0 until 30).map { i -> event(w.startMs + i * 3_600_000L + 900_000, 80.0, "voices") } // not highlighted
         val m = ChartModel.build(d.copy(events = many), zone, "loud_vehicle", 45.0)
-        val drawn = m.otherEvents + m.highlightedEvents
-        assertEquals(300, drawn.size)
+        assertTrue(m.otherEvents.isEmpty()) // the week view draws no grey dots
+        assertEquals(300, m.highlightedEvents.size)
         assertTrue(m.eventsCapped)
-        assertTrue(drawn.all { it.lafMaxDb >= 66.0 }) // the loudest 300
-        assertEquals(450, m.summary.eventCount) // the summary counts all events ≥ the floor
+        assertTrue(m.highlightedEvents.all { it.lafMaxDb >= 66.0 }) // the loudest 300
+        assertEquals(480, m.summary.eventCount) // the summary counts all events ≥ the floor
+        assertEquals(450, m.summary.highlightCount)
         val few = ChartModel.build(d.copy(events = many.take(10)), zone, "loud_vehicle", 45.0)
         assertTrue(!few.eventsCapped)
+        // Highlighting voices draws only those.
+        val voices = ChartModel.build(d.copy(events = many), zone, "voices", 45.0)
+        assertEquals(30, voices.highlightedEvents.size)
+        assertTrue(voices.otherEvents.isEmpty())
         // A floor above 60 dB raises the week threshold too.
         val high = ChartModel.build(d.copy(events = many), zone, "loud_vehicle", 75.0)
-        assertTrue((high.otherEvents + high.highlightedEvents).all { it.lafMaxDb >= 75.0 })
+        assertTrue(high.highlightedEvents.all { it.lafMaxDb >= 75.0 })
+        // Night and day views still draw all events.
+        val night = ChartModel.build(SyntheticData.fridayNight(), zone, "loud_vehicle", 45.0)
+        assertEquals(13, night.otherEvents.size)
     }
 
     // ---- hit testing -----------------------------------------------------------------------------
@@ -278,5 +287,12 @@ class ChartModelTest {
         assertEquals("23:40:30 · Töff & Poser", lines[0])
         assertTrue("LAFmax 85.0 dB(A)" in lines && "unkalibriert" in lines, lines.toString())
         assertEquals(listOf("03:20", "keine Messung"), tooltipLines(Selection.NoData(SyntheticData.ms(LocalDateTime.of(2026, 10, 10, 3, 20))), m))
+        // Day and week: weekday and date first.
+        val dayData = SyntheticData.fridayNight().let { it.copy(window = Windows(zone).of(RangeMode.DAY, LocalDate.of(2026, 10, 9))) }
+        val dayModel = ChartModel.build(dayData, zone, "loud_vehicle", 45.0)
+        assertEquals("Fr 9.10. 23:40:30 · Töff & Poser", tooltipLines(Selection.Event(e, true), dayModel)[0])
+        val weekModel = ChartModel.build(SyntheticData.weekData(), zone, "loud_vehicle", 45.0)
+        val p = weekModel.points.first { it.valid }
+        assertEquals("Mo 5.10. 00:00–01:00", tooltipLines(Selection.Point(p), weekModel)[0])
     }
 }

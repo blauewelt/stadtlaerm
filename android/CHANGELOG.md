@@ -10,9 +10,10 @@ Test version: a chart of the measured noise, and an absolute floor for events.
   chart); the screen opens on the running night, else on the most recent night with data. The
   line and band break wherever a minute is missing or has < 50 % valid audio; gaps of 10 min
   or more are marked «keine Messung». The week view shows hourly values (energy mean; an hour
-  needs 30 valid minutes) and only events ≥ 60 dB(A), at most the loudest 300. One category is
-  highlighted in orange (default: Töff & Poser; chips below the chart, remembered); the others
-  are grey. Tap for a tooltip with the minute's levels or the event's details; a summary row
+  needs 30 valid minutes) and only events of the highlighted category ≥ 60 dB(A), at most the
+  loudest 300. One category is highlighted in orange (default: Töff & Poser; a scrolling row of
+  chips below the chart, remembered); the others are grey. Tap for a tooltip with the minute's
+  levels or the event's details (with weekday and date in the day and week views); a summary row
   shows LAeq, event count and the loudest event of the window, plus the measured share of the
   time and any interruptions. Tapping a night in the list opens it in the chart.
 - **Event floor.** New setting «Mindestpegel für Ereignisse (LAFmax)», 30–70 dB(A), default 45.
