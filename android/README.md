@@ -1,4 +1,4 @@
-# Stadtlärm — citizen noise measurement for Zürich (Android, v0.2.0)
+# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.0)
 
 Stadtlärm turns an Android phone into a night-time noise logger. It measures A-weighted
 sound levels the way a sound level meter does (IEC 61672-1 A-weighting, Fast time weighting),
@@ -24,7 +24,7 @@ below are relative to this directory.
 | LAeq,1s / LAeq,1min | Energy-equivalent A-weighted level over 1 s / 1 min (from the un-time-weighted signal) |
 | LAFmax / LAFmin | Max/min of LAF in the period (max from the continuous Fast signal, min from the 125 ms samples) |
 | L1, L10, L50, L90 | Level exceeded 1/10/50/90 % of the time, from the 480 LAF samples of the minute (so L10 > L90) |
-| Event | LAF > background + threshold (default 10 dB) for ≥ 0.5 s; ends below background + threshold − 3 dB. Background = L90 of LAF over the trailing 5 min, frozen at event start |
+| Event | LAF > background + threshold (default 10 dB) for ≥ 0.5 s; ends below background + threshold − 3 dB. Background = L90 of LAF over the trailing 5 min, frozen at event start. Kept only if its LAFmax also reaches the absolute **event floor** (setting «Mindestpegel», default 45 dB(A), 30–70) |
 | SEL (LAE) | Sound exposure level of the event, re 1 s: `10·log10(Σ 10^(Leq_tick/10)·0.125 s)` |
 | Valid time / coverage | Seconds of a minute with a real microphone signal. Time while Android silences the mic (phone call, voice assistant — the app then receives zeros) or while the input is digital silence, plus 0.5 s of filter recovery, is excluded from every level, percentile, event and the background |
 | Night LAeq | Energy average over the valid time of all minutes that start between 22:00 and 06:00 local time; minutes with < 50 % coverage are left out. The night is 8 h, or 7 h / 9 h on DST-change nights |
@@ -34,11 +34,59 @@ Android CDD sensitivity guideline (90 dB SPL at 1 kHz → RMS 2500/32768, i.e. �
 which gives an offset of **112.35 dB**. All data measured this way is flagged
 `calibrated = false`.
 
+**Event floor.** Relative to a very quiet background (20 dB at night indoors) even keystrokes are
+10 dB louder, so events must also reach an absolute LAFmax. A candidate that never reaches the
+floor is discarded and not counted in the minute's `event_count`. The floor in force is stored
+with every event (`min_level_db`). Events recorded before v0.3.0 have none; the night list and the
+chart apply the *current* floor to all stored events, so they always agree. With an uncalibrated
+phone the floor is only approximate, like every level.
+
 Every minute record stores: start (ISO-8601 with zone offset), duration, LAeq, LAFmax,
 LAFmin, L1, L10, L50, L90, event count, dominant source category, time share per category,
 calibration id and offset, audio source and the calibrated flag. Every event stores start,
 duration, LAFmax, SEL, background level, threshold, dominant category and score, and the top-3
-raw AudioSet labels with scores.
+raw AudioSet labels with scores, and the event floor in force.
+
+## Chart
+
+The **Nächte** tab starts with a chart of the measured levels, drawn by the app (Compose
+`Canvas`, no chart library):
+
+- **Range:** Nacht (22:00–06:00 local time, DST-aware, the same nights as the summaries), Tag
+  (00:00–24:00) or Woche (Monday–Sunday). ‹ › or a sideways swipe on the chart (≥ 15 % of its
+  width, or a fling) move one window; › stops at the window that contains now. The screen opens
+  on the running night, otherwise on the most recent night with data. Tapping a night in the list
+  below opens it in the chart.
+- **Marks:** a band from L90 to L10 (the background), the LAeq line per minute, and every event
+  as a dot at (start, LAFmax). One category is highlighted in orange and drawn on top (default
+  Töff & Poser; chosen with the chips under the chart and remembered), all others grey. Night
+  periods are shaded. The y axis runs from the lowest L90 − 5 dB to the loudest shown event or
+  LAeq + 5 dB (rounded to 5 dB, at least 30 dB).
+- **Gaps:** the line and band are never drawn across a missing minute or one with < 50 % valid
+  audio; spans of 10 min or more get a light «keine Messung» area. Time after now is not a gap.
+- **Week view:** hourly values (energy mean over the valid minutes, weighted by their valid
+  seconds; L10 = maximum and L90 = minimum of the minute values; an hour needs 30 valid
+  minutes). Only events ≥ max(floor, 60 dB(A)) are drawn, at most the loudest 300.
+- **Touch:** a tap shows a crosshair and a tooltip for the nearest minute (hour), or for an
+  event dot within 16 dp; while the tooltip is open, dragging sideways moves the crosshair.
+  Tapping the tooltip (or outside the plot) closes it.
+- **Summary:** LAeq of the window (same rule as the night summaries), number of events (and of
+  the highlighted category), the loudest event, the measured share of the time and any
+  interruptions.
+
+The chart code is in `chart/`: `Windows.kt` (window arithmetic), `ChartModel.kt` (data → model:
+series, runs, gaps, y range, events, summary), `ChartGeometry.kt` (pixels, hit testing),
+`NoiseChart.kt` and `HistorySection.kt` (Compose). It is tested on the JVM, and rendered without a
+device with [Paparazzi](https://github.com/cashapp/paparazzi):
+
+```sh
+STADTLAERM_SCREENSHOT_DIR=/tmp/shots ./gradlew :chart:testDebugUnitTest --rerun
+# optional: also render real data from the app's CSV export (minuten.csv, ereignisse.csv)
+STADTLAERM_REAL_DATA=/path/to/export ./gradlew :chart:testDebugUnitTest --rerun
+```
+
+The renders use synthetic data (`chart/src/test/.../SyntheticData.kt`); real exports are only
+read from the directory given in `STADTLAERM_REAL_DATA` and never belong in the repository.
 
 ## Source categories
 
@@ -74,7 +122,8 @@ current version and its SHA-256). A German step-by-step guide is on the website.
 
 > **Upgrading from an earlier test build (v0.1.x)?** Those were debug builds signed with a
 > different key, and Android refuses to update an app across signing keys. Export your data
-> (Daten → CSV exportieren), **uninstall the old Stadtlärm**, then install v0.2.0.
+> (Daten → CSV exportieren), **uninstall the old Stadtlärm**, then install the current version.
+> From v0.2.0 on, updates install over the previous version and keep the data.
 
 1. Download the APK on the phone. If the browser's download dialog refuses to open it, open it
    from the **Files** app (Dateien → Downloads).
@@ -208,9 +257,14 @@ share sheet. Column names are in the first row (`laeq_db`, `lafmax_db`, `share_l
 - Settings changes (including the classifier level adjustment) apply from the next start of a measurement.
 - Calibration must be done with the app in the foreground; leaving the app aborts the measurement.
 
-## Status of v0.2.0
+## Status of v0.3.0
 
-v0.2.0 is a public **test version**: the first signed release, functionally identical to v0.1.1.
+v0.3.0 is a public **test version**: v0.2.0 plus the chart and the event floor (see
+[CHANGELOG](CHANGELOG.md)).
+
+- The chart is verified with JVM unit tests and JVM renders (Paparazzi) in light and dark mode,
+  with synthetic data and with a real night; touch gestures and performance have not yet been
+  tried on a phone.
 
 - Built and unit-tested on the JVM: all DSP (A-weighting, Fast weighting, levels, percentiles,
   events, resampler, category mapping, calibration math, night summaries, CSV).
@@ -287,6 +341,8 @@ dsp/   pure Kotlin/JVM, no Android dependencies — shared with the planned ESP3
   classify/               SoundClassifier interface, category mapping, input normalisation
   calibration/            calibration measurement, tone check (FFT), offset math
   Nights.kt, Csv.kt       night summaries, CSV export
+chart/ Android library: the history chart (drawing model, Compose Canvas) and the app theme;
+       JVM tests and Paparazzi renders
 app/   Android: AudioRecord capture, foreground service, LiteRT YAMNet, Room, Compose UI
 tools/verify_yamnet.py    model I/O + Kotlin-vs-Python preprocessing check
 ```
@@ -300,7 +356,7 @@ tools/verify_yamnet.py    model I/O + Kotlin-vs-Python preprocessing check
   (the `dsp` module is written to port 1:1 to C/C++ or Kotlin/Native) and the same calibration
   procedure, so phone and sensor data are comparable. See [firmware/](../firmware/README.md).
 - Opt-in, aggregated data sharing for a city-wide map (only after a separate privacy review).
-- Per-night charts, Slow time weighting, Lnight/Lden reporting per ISO 1996.
+- Slow time weighting, Lnight/Lden reporting per ISO 1996; zoom and export of the chart.
 
 ## Third-party components
 

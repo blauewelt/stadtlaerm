@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.3.0 — 2026-10-07
+
+Test version: a chart of the measured noise, and an absolute floor for events.
+
+- **Chart («Nächte»).** A chart of the measured levels over time, drawn by the app itself (no
+  chart library): the background band L90–L10, the LAeq line and every event as a dot at its
+  LAFmax. Range buttons **Nacht · Tag · Woche** and ‹ › navigation (or swipe sideways on the
+  chart); the screen opens on the running night, else on the most recent night with data. The
+  line and band break wherever a minute is missing or has < 50 % valid audio; gaps of 10 min
+  or more are marked «keine Messung». The week view shows hourly values (energy mean; an hour
+  needs 30 valid minutes) and only events ≥ 60 dB(A), at most the loudest 300. One category is
+  highlighted in orange (default: Töff & Poser; chips below the chart, remembered); the others
+  are grey. Tap for a tooltip with the minute's levels or the event's details; a summary row
+  shows LAeq, event count and the loudest event of the window, plus the measured share of the
+  time and any interruptions. Tapping a night in the list opens it in the chart.
+- **Event floor.** New setting «Mindestpegel für Ereignisse (LAFmax)», 30–70 dB(A), default 45.
+  An event is only kept if its LAFmax reaches the floor (in a quiet room, keystrokes 10 dB above a
+  20 dB background were events). The floor in force is stored with each event (`min_level_db`,
+  also in the events CSV). Events recorded before 0.3.0 are filtered with the current floor when
+  the night list and the chart are shown, so both agree; their CSV export is unchanged (empty
+  `min_level_db`).
+- Database v3 (migration adds `events.min_level_db`).
+- New Gradle module `chart/` (drawing model, Compose chart, app theme) with JVM tests and
+  Paparazzi renders.
+
+
 ## 0.2.0 — 2026-10-06
 
 First signed public release. No functional changes to measurement, classification or storage.

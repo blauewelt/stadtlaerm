@@ -122,24 +122,18 @@ section {
   margin-top: 0.6rem;
 }
 
-/* The night: one illustrative level trace, 22:00 to 06:00 */
+/* The night: a render of the app's chart (synthetic example data) */
 .night {
   margin: 2.25rem 0 0;
 }
-.night svg {
+.night img {
   display: block;
-  width: 100%;
+  width: 412px;
+  max-width: 100%;
   height: auto;
-  overflow: visible;
+  border: 1px solid var(--grid);
+  border-radius: 12px;
 }
-.night .grid { stroke: var(--grid); stroke-width: 1; }
-.night .trace { fill: none; stroke: var(--trace); stroke-width: 1.4; stroke-linejoin: round; }
-.night .area { fill: var(--trace-fill); stroke: none; }
-.night .peak { fill: var(--amber); }
-.night .stem { stroke: var(--amber); stroke-width: 1.5; }
-.night text { font-family: var(--sans); fill: var(--muted); font-size: 14px; }
-.night .label { fill: var(--ink); font-weight: 650; font-size: 15px; }
-.night .label .time { fill: var(--muted); font-weight: 400; }
 .night figcaption {
   color: var(--muted);
   font-size: 0.9375rem;
