@@ -18,47 +18,76 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import ch.stadtlaerm.app.container
-import ch.stadtlaerm.app.data.Mappers.toEvent
-import ch.stadtlaerm.app.data.Mappers.toRecord
-import ch.stadtlaerm.dsp.NightSummarizer
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import ch.stadtlaerm.chart.HistoryActions
+import ch.stadtlaerm.chart.HistorySection
+import ch.stadtlaerm.chart.RangeMode
+import ch.stadtlaerm.chart.Selection
 import ch.stadtlaerm.dsp.NightSummary
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import java.time.DayOfWeek
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun NightsScreen(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val repo = context.container.measurements
-    val nights by produceState<List<NightSummary>?>(null) {
-        val settings = context.container.settings.state
-        combine(repo.minutesFlow(), repo.eventsFlow(), settings.map { it.eventMinLevelDb }) { m, e, floor -> Triple(m, e, floor) }
-            .map { (m, e, floor) -> NightSummarizer.summarize(m.map { it.toRecord() }, e.map { it.toEvent() }, ZoneId.systemDefault(), eventMinLevelDb = floor) }
-            .flowOn(Dispatchers.Default)
-            .collect { value = it }
+fun NightsScreen(modifier: Modifier = Modifier, vm: HistoryViewModel = viewModel()) {
+    val nights by vm.nights.collectAsStateWithLifecycle()
+    val window by vm.window.collectAsStateWithLifecycle()
+    val data by vm.data.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    // The tooltip belongs to one window: navigating closes it.
+    val selectionState = remember(window) { mutableStateOf<Selection?>(null) }
+    val actions = remember(vm, selectionState) {
+        object : HistoryActions {
+            override fun onMode(mode: RangeMode) = vm.setMode(mode)
+            override fun onShift(delta: Int) = vm.shift(delta)
+            override fun onHighlight(category: String) = vm.setHighlight(category)
+            override fun onSelect(selection: Selection?) { selectionState.value = selection }
+        }
     }
 
-    LazyColumn(modifier.fillMaxWidth()) {
+    LazyColumn(modifier.fillMaxWidth(), state = listState) {
         item {
             Text(
                 "Nächte", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+            )
+        }
+        item {
+            val w = window
+            if (w == null) {
+                Text("Lade …", Modifier.padding(16.dp))
+            } else {
+                HistorySection(
+                    window = w, data = data, zone = vm.zone, highlight = settings.chartHighlightCategory,
+                    eventFloorDb = settings.eventMinLevelDb,
+                    canGoNext = vm.windows.canGoNext(w, System.currentTimeMillis()),
+                    selection = selectionState.value, actions = actions,
+                )
+            }
+        }
+        item {
+            Text(
+                "Alle Nächte", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp),
             )
             Text(
                 "Nachtzeit 22:00–06:00 (Ortszeit; bei Zeitumstellung 7 bzw. 9 h). Pegel energetisch gemittelt über die " +
-                    "gültige Messzeit; Minuten mit weniger als 50 % gültigem Signal (z. B. Mikrofon durch Anruf stummgeschaltet) werden nicht gewertet.",
+                    "gültige Messzeit; Minuten mit weniger als 50 % gültigem Signal (z. B. Mikrofon durch Anruf stummgeschaltet) werden nicht gewertet. " +
+                    "Ereignisse zählen ab ${settings.eventMinLevelDb.toInt()} dB(A) (Einstellungen). Tippen zeigt die Nacht in der Grafik.",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
@@ -67,7 +96,12 @@ fun NightsScreen(modifier: Modifier = Modifier) {
         when {
             list == null -> item { Text("Lade …", Modifier.padding(16.dp)) }
             list.isEmpty() -> item { Text("Noch keine Nachtmessungen.", Modifier.padding(16.dp)) }
-            else -> items(list, key = { it.nightOf.toString() }) { NightCard(it) }
+            else -> items(list, key = { it.nightOf.toString() }) { n ->
+                NightCard(n) {
+                    vm.showNight(n.nightOf)
+                    scope.launch { listState.animateScrollToItem(0) }
+                }
+            }
         }
         item { Spacer(Modifier.height(24.dp)) }
     }
@@ -77,10 +111,10 @@ private val dayFmt = DateTimeFormatter.ofPattern("EEEE, dd.MM.", SwissLocale)
 private val shortDay = DateTimeFormatter.ofPattern("EE dd.MM.", SwissLocale)
 
 @Composable
-private fun NightCard(n: NightSummary) {
+private fun NightCard(n: NightSummary, onClick: () -> Unit) {
     val context = LocalContext.current
     val weekend = n.nightOf.dayOfWeek == DayOfWeek.FRIDAY || n.nightOf.dayOfWeek == DayOfWeek.SATURDAY
-    SectionCard {
+    SectionCard(modifier = Modifier.clickable(onClick = onClick)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "${n.nightOf.format(dayFmt)} → ${n.nightOf.plusDays(1).format(shortDay)}",

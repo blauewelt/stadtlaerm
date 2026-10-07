@@ -8,7 +8,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,10 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,47 +36,6 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 val SwissLocale: Locale = Locale("de", "CH")
-
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF1F3A4D),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFD3E4F0),
-    onPrimaryContainer = Color(0xFF0B1E2A),
-    secondary = Color(0xFF8A5A00),
-    secondaryContainer = Color(0xFFFFE3A8),
-    onSecondaryContainer = Color(0xFF2B1B00),
-    tertiary = Color(0xFF3E6B48),
-    background = Color(0xFFF7F7F4),
-    surface = Color(0xFFF7F7F4),
-    surfaceVariant = Color(0xFFE4E4DE),
-    error = Color(0xFFB3261E),
-    errorContainer = Color(0xFFF9DEDC),
-    onErrorContainer = Color(0xFF410E0B),
-)
-
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFF9CC6E4),
-    onPrimary = Color(0xFF0B1E2A),
-    primaryContainer = Color(0xFF2A4B61),
-    onPrimaryContainer = Color(0xFFD3E4F0),
-    secondary = Color(0xFFF2C14E),
-    secondaryContainer = Color(0xFF5A3F00),
-    onSecondaryContainer = Color(0xFFFFE3A8),
-    tertiary = Color(0xFF9FD3A8),
-    background = Color(0xFF111416),
-    surface = Color(0xFF111416),
-    surfaceVariant = Color(0xFF2A2E31),
-    error = Color(0xFFF2B8B5),
-    errorContainer = Color(0xFF601410),
-    onErrorContainer = Color(0xFFF9DEDC),
-)
-
-@Composable
-fun StadtlaermTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors) {
-        Surface(color = MaterialTheme.colorScheme.background, content = content)
-    }
-}
 
 object Fmt {
     fun db(v: Double?, decimals: Int = 1): String =
@@ -123,9 +78,9 @@ fun categoryColor(id: String?): Color = when (id) {
 }
 
 @Composable
-fun SectionCard(title: String? = null, content: @Composable () -> Unit) {
+fun SectionCard(title: String? = null, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).then(modifier),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

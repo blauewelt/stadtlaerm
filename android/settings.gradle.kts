@@ -19,4 +19,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "stadtlaerm"
-include(":dsp", ":app")
+include(":dsp", ":chart", ":app")
