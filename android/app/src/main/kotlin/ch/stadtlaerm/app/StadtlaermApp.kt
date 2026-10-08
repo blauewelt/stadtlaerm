@@ -9,11 +9,13 @@ import ch.stadtlaerm.app.data.Recalibrator
 import ch.stadtlaerm.app.data.SettingsStore
 import ch.stadtlaerm.app.service.LiveState
 import ch.stadtlaerm.app.update.UpdateReminderStore
+import ch.stadtlaerm.app.upload.UploadModule
 import ch.stadtlaerm.dsp.classify.CategoryMapper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 class StadtlaermApp : Application() {
     lateinit var container: AppContainer
@@ -22,6 +24,13 @@ class StadtlaermApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        // «Messwerte teilen»: keeps the upload schedule in line with the setting and uploads after
+        // a measurement stops. Does nothing (no network) while sharing is off, and nothing at all
+        // in the Labor build.
+        // Started off the main thread (the token is read through the Android Keystore).
+        if (BuildConfig.UPLOAD_AVAILABLE) {
+            container.appScope.launch { container.upload.start(container.appScope, container.live, container.recalibrator) }
+        }
     }
 }
 
@@ -37,6 +46,8 @@ class AppContainer(context: Context) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val recalibrator: Recalibrator by lazy { Recalibrator(db, appScope) }
     val live = MutableStateFlow(LiveState())
+    /** The opt-in upload «Messwerte teilen» (server/DESIGN.md §4); the app's only network use. */
+    val upload: UploadModule by lazy { UploadModule(appContext, db, calibrations) }
     /** True while the calibration screen is using the microphone (blocks starting a measurement). */
     val calibrationActive = MutableStateFlow(false)
 

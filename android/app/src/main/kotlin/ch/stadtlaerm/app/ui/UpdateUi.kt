@@ -33,7 +33,7 @@ import java.time.LocalDate
 val LocalSnackbarHost = staticCompositionLocalOf { SnackbarHostState() }
 
 /**
- * Opens the update page in the browser. The app has no internet permission; the browser does
+ * Opens the update page in the browser. The app itself never asks a server for updates; the browser does
  * the request, and the version in the URL fragment never reaches the server.
  * Returns false if no app can open the link.
  */
@@ -109,7 +109,7 @@ fun AppVersionCard() {
         )
         OutlinedButton(onClick = open) { Text("Nach Update suchen") }
         Text(
-            "Öffnet stadtlaerm.ch im Browser. Die App selbst hat keinen Internetzugang.",
+            "Öffnet stadtlaerm.ch im Browser. Die App selbst fragt keinen Server nach Updates.",
             style = MaterialTheme.typography.bodySmall,
         )
     }

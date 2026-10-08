@@ -6,7 +6,7 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 /**
- * Update check without network access. The app never contacts a server: «Nach Update suchen»
+ * Update check without network access. The app never contacts a server for it: «Nach Update suchen»
  * opens stadtlaerm.ch/update.html in the browser with the installed version in the URL fragment
  * (which the browser does not send to the server), and the page compares it locally.
  *
