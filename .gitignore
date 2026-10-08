@@ -29,3 +29,6 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Node (Playwright tests, vendored Leaflet source)
+node_modules/
