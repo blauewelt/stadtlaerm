@@ -1,0 +1,325 @@
+/* Noise map page (docs/karte.html). Builds on style.css: same variables, fonts and palette.
+ * Card and legend follow the pixel inspector and legend bars of blauewelt/earth
+ * (src/style.css), translated to this site's light/dark variables. */
+
+.wrap.wide { max-width: 72rem; }
+
+.karte-page .page-head { padding-bottom: 0.5rem; }
+.karte-page .page-head .lead { color: var(--muted); max-width: 42rem; margin-top: 0.75rem; }
+.karte-page .page-head .small { margin-bottom: 0.5rem; }
+
+/* ---------- controls ---------- */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.metric {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.metric legend {
+  /* visually hidden, still announced */
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.metric label { position: relative; cursor: pointer; }
+.metric input {
+  position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer;
+}
+.metric span {
+  display: inline-block;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.9375rem;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.metric input:checked + span {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: var(--on-blue);
+  font-weight: 650;
+}
+.metric input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.datebar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.datebar p { margin: 0; font-size: 0.9375rem; text-align: center; min-width: 0; flex: 1 1 auto; }
+.step {
+  flex: 0 0 auto;
+  width: 2.5rem; height: 2.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.step:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
+.step:disabled { opacity: 0.4; cursor: default; }
+
+.status-line {
+  background: var(--surface);
+  border-left: 4px solid var(--amber);
+  padding: 0.6rem 0.9rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.9375rem;
+}
+
+/* ---------- map ---------- */
+
+.mapgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
+
+.map {
+  height: clamp(320px, 62vh, 620px);
+  border: 1px solid var(--rule);
+  border-radius: 0.5rem;
+  background: var(--paper);
+  z-index: 0;              /* keep Leaflet's panes below the card and page */
+}
+.map:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.leaflet-container { font-family: var(--sans); font-size: 0.8125rem; background: var(--paper); }
+.leaflet-container a { color: var(--blue); }
+.leaflet-control-attribution { font-size: 0.75rem; }
+.leaflet-control-zoom a { width: 2.25rem; height: 2.25rem; line-height: 2.25rem; }
+
+/* Cells. Fill colour comes from karte.js (it depends on the value); edges from here, so
+ * they follow the light/dark variables. */
+path.cell { stroke: var(--ink); stroke-width: 1; stroke-opacity: 0.55; }
+path.cell.uncal { stroke-dasharray: 3 3; stroke-width: 1.5; stroke-opacity: 0.9; }
+path.cell.nodata { fill: var(--surface); fill-opacity: 0.35; stroke-dasharray: 2 3; }
+path.cell.selected { stroke: var(--blue); stroke-width: 3; stroke-opacity: 1; stroke-dasharray: none; }
+path.cell:focus { outline: none; }
+
+/* Hover tooltip (fine pointers only) */
+.cell-tip.leaflet-tooltip {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  font-size: 0.8125rem;
+  padding: 0.2rem 0.5rem;
+}
+.cell-tip.leaflet-tooltip::before { display: none; }
+
+/* swisstopo's grey map is greyscale: in dark mode, invert it to a dark basemap. */
+@media (prefers-color-scheme: dark) {
+  .map .leaflet-tile-pane { filter: invert(1) brightness(0.82) contrast(0.9); }
+  .leaflet-bar a { background: var(--surface); color: var(--ink); border-color: var(--rule); }
+  .leaflet-control-attribution.leaflet-control { background: rgba(13, 22, 38, 0.8); color: var(--muted); }
+}
+
+/* ---------- legend ---------- */
+
+.legend {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 0.5rem;
+  padding: 0.75rem 0.9rem 0.6rem;
+  font-size: 0.875rem;
+}
+.legend-title { font-weight: 650; margin: 0 0 0.45rem; line-height: 1.35; }
+.legend-bar {
+  display: flex;
+  height: 0.85rem;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+}
+.legend-bar span { flex: 1 1 0; }
+.legend-ticks { position: relative; height: 1.3rem; margin-top: 0.15rem; }
+.legend-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 0.8125rem;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.legend-ticks span::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -0.35rem;
+  height: 0.3rem;
+  border-left: 1px solid var(--ink);
+}
+.legend-ticks span.lsv { color: var(--ink); font-weight: 650; }
+.legend-lsv { list-style: none; padding: 0; margin: 0.35rem 0 0.4rem; }
+.legend-lsv li { display: flex; gap: 0.5rem; line-height: 1.4; margin-bottom: 0.15rem; }
+.legend-lsv b { flex: 0 0 3.2rem; font-variant-numeric: tabular-nums; }
+.legend-note { color: var(--muted); font-size: 0.8125rem; line-height: 1.45; margin: 0.3rem 0 0.4rem; }
+.legend-keys { list-style: none; padding: 0; margin: 0; color: var(--muted); font-size: 0.8125rem; }
+.legend-keys li { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem; line-height: 1.35; }
+.key { flex: 0 0 1.1rem; height: 0.8rem; border: 1.5px solid var(--ink); border-radius: 2px; }
+.key-dashed { border-style: dashed; background: var(--paper); }
+.key-empty { border-style: dotted; border-width: 1px; background: var(--paper); }
+
+/* ---------- card (after earth's pixel inspector) ---------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 0.6rem;
+  box-shadow: 0 6px 24px rgba(10, 20, 40, 0.12);
+  font-size: 0.9375rem;
+  min-width: 0;
+}
+.card[hidden] { display: none; }
+.card:focus { outline: none; }
+.card:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--rule);
+}
+.card-head h2 { font-size: 1.0625rem; font-weight: 700; margin: 0; letter-spacing: 0; }
+.card-close {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 1.5rem;
+  line-height: 1;
+  width: 2.25rem; height: 2.25rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+.card-close:hover { color: var(--ink); background: var(--paper); }
+.card-body { padding: 0.5rem 0.9rem 0.8rem; }
+.card-sub { color: var(--muted); font-size: 0.875rem; margin: 0 0 0.4rem; }
+.card-sec { margin: 0.8rem 0 0; padding: 0; border-top: 0; }   /* not style.css's page sections */
+.card-sec h3 {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  margin: 0 0 0.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5rem;
+}
+.card-sec h3 small { font-weight: 400; color: var(--muted); font-size: 0.8125rem; }
+
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  vertical-align: 0.1em;
+}
+
+/* Every value carries WHEN it was measured: the stamp right-aligns beside the value when
+ * it fits and drops to its own line when it does not (earth's .px-when rule). */
+.rows { margin: 0; }
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.6rem;
+  padding: 0.18rem 0;
+  border-top: 1px solid var(--rule);
+}
+.row:first-child { border-top: 0; }
+.row dt { color: var(--muted); flex: 0 0 40%; min-width: 0; }
+.row dd { margin: 0; font-variant-numeric: tabular-nums; }
+.row .when {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  align-self: baseline;
+}
+.card-note { color: var(--muted); font-size: 0.8125rem; line-height: 1.45; margin: 0.5rem 0 0; }
+
+/* night chart */
+.nightchart { display: block; width: 100%; height: auto; margin: 0.15rem 0 0; overflow: visible; }
+.nightchart .grid { stroke: var(--grid); stroke-width: 1; }
+.nightchart .axis { fill: var(--muted); font-size: 10px; font-family: var(--sans); }
+.nightchart .band { fill: var(--trace); fill-opacity: 0.16; }
+.nightchart .laeq { fill: none; stroke: var(--trace); stroke-width: 2; stroke-linejoin: round; }
+.nightchart .gap { fill: var(--grid); fill-opacity: 0.35; }
+.nightchart .gaplabel { fill: var(--muted); font-size: 9px; font-family: var(--sans); }
+.nightchart .peak { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.nightchart .dot { fill: var(--muted); }
+.nightchart .dot.hl { fill: var(--amber); }
+.chart-keys { display: flex; flex-wrap: wrap; gap: 0.15rem 0.9rem; margin: 0.2rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.8125rem; }
+.chart-keys li { display: flex; align-items: center; gap: 0.35rem; }
+.chart-keys i { display: inline-block; width: 0.9rem; height: 0.6rem; }
+.chart-keys .k-band { background: var(--trace); opacity: 0.25; }
+.chart-keys .k-line { height: 2px; background: var(--trace); }
+.chart-keys .k-hl { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--amber); }
+.chart-keys .k-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--muted); }
+.chart-keys .k-peak { width: 0.6rem; height: 0.6rem; border-radius: 50%; border: 1.5px solid var(--muted); }
+
+/* ---------- list of cells (keyboard / screen-reader path) ---------- */
+
+.celllist {
+  margin: 1rem 0 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9375rem;
+}
+.celllist summary { cursor: pointer; font-weight: 650; padding: 0.2rem 0; }
+.celllist ol { list-style: none; padding: 0; margin: 0.4rem 0 0.2rem; columns: 16rem; column-gap: 1.5rem; }
+.celllist li { break-inside: avoid; }
+.celllist button {
+  display: flex;
+  width: 100%;
+  gap: 0.5rem;
+  align-items: center;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  padding: 0.35rem 0.1rem;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.celllist button:hover { color: var(--blue); }
+.celllist .swatch { flex: 0 0 0.9rem; height: 0.9rem; border-radius: 2px; border: 1px solid var(--rule); }
+.celllist .val { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+#network { margin-top: 0.75rem; }
+
+.explain dt { font-weight: 650; }
+.explain dd { margin: 0 0 0.75rem; color: var(--ink); }
+
+/* ---------- wide screens: card beside the map ---------- */
+
+@media (min-width: 56rem) {
+  .mapgrid { grid-template-columns: minmax(0, 1fr) 22rem; align-items: start; }
+  .mapgrid .map { grid-column: 1; grid-row: 1; }
+  .mapgrid .legend { grid-column: 1; grid-row: 2; }
+  .mapgrid .card { grid-column: 2; grid-row: 1 / span 2; max-height: calc(62vh + 12rem); overflow-y: auto; }
+  .mapgrid.no-card { grid-template-columns: minmax(0, 1fr); }
+  .legend { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 1.5rem; }
+  .legend-title, .legend-bar, .legend-ticks { grid-column: 1 / -1; }
+}

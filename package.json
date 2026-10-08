@@ -5,9 +5,9 @@
   "description": "Tests and vendored assets for the stadtlaerm.ch website (docs/)",
   "license": "Apache-2.0",
   "scripts": {
-    "test:unit": "node --test tests/unit/",
+    "test:unit": "node --test 'tests/unit/*.test.js'",
     "test:e2e": "playwright test",
-    "test": "node --test tests/unit/ && python3 scripts/stamp_assets.py --check && playwright test",
+    "test": "node --test 'tests/unit/*.test.js' && python3 scripts/stamp_assets.py --check && playwright test",
     "stamp": "python3 scripts/stamp_assets.py",
     "serve": "python3 -m http.server 8090 --directory docs"
   },

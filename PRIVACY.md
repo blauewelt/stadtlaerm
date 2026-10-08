@@ -134,11 +134,21 @@ knows about it.
 ## The website
 
 [stadtlaerm.ch](https://stadtlaerm.ch) (source in `docs/`) is static HTML and CSS. It sets no
-cookies, runs no analytics and loads nothing from third parties: no web fonts, no CDNs, no
-external images. The only script is inline on `update.html` (allowed by its hash in the
+cookies, runs no analytics and loads nothing from third parties (except the map page, below): no
+web fonts, no CDNs, no external images. The only inline script is on `update.html` (allowed by its hash in the
 Content-Security-Policy): the app opens `update.html#v=<version>&c=<versionCode>`, the browser
 does not send the part after `#` to the server, and the script compares it with the published
 version locally. It is hosted on GitHub Pages; GitHub may log visitors' IP addresses for
 technical reasons, see the
 [GitHub General Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 The German privacy page is [docs/datenschutz.html](docs/datenschutz.html).
+
+**The map page is the one exception.** `docs/karte.html` (the shared noise map, see
+[server/DESIGN.md](server/DESIGN.md) §7) loads map tiles from swisstopo
+(`wmts.geo.admin.ch`) and the published per-hectare aggregates from the project's own API host
+(`api.stadtlaerm.ch`), and nothing else; its Content-Security-Policy allows exactly these two
+hosts (`img-src` and `connect-src`) and scripts only from the site itself (vendored Leaflet,
+no inline script). It says so in one sentence above the map, and `datenschutz.html` repeats it.
+Both hosts necessarily see the visitor's IP address; the page sends no referrer and sets no
+cookies, and the API server keeps no access log. All other pages still load nothing from third
+parties.

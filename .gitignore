@@ -32,3 +32,7 @@ venv/
 
 # Node (Playwright tests, vendored Leaflet source)
 node_modules/
+
+# Playwright output
+test-results/
+playwright-report/

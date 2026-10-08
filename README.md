@@ -26,7 +26,7 @@ source classification runs on the phone and only levels and statistics are kept.
 |---|---|
 | [`android/`](android/) | Android app (Kotlin): measurement service, on-device sound classifier, calibration, UI, plus the platform-independent `dsp` module. See [android/README.md](android/README.md) for install, calibration and build instructions |
 | [`firmware/`](firmware/) | Planned ESP32-S3 windowsill sensor (placeholder, no code yet) |
-| [`docs/`](docs/) | The website [stadtlaerm.ch](https://stadtlaerm.ch) (static HTML/CSS, one hash-pinned inline script on `update.html`, served by GitHub Pages) and the signed APK in `docs/download/` |
+| [`docs/`](docs/) | The website [stadtlaerm.ch](https://stadtlaerm.ch) (static HTML/CSS, one hash-pinned inline script on `update.html`, served by GitHub Pages), the noise map `karte.html` (vendored Leaflet, swisstopo tiles and the project's API as its only external hosts; see [docs/README.md](docs/README.md)) and the signed APK in `docs/download/` |
 | [`PRIVACY.md`](PRIVACY.md) | What the project does with sound, with references into the code |
 | [`LICENSE`](LICENSE) | Apache License 2.0 |
 
