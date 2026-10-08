@@ -193,6 +193,17 @@ interface MeasurementDao {
 
     @Update suspend fun updateMinutes(m: List<MinuteEntity>)
     @Update suspend fun updateEvents(e: List<EventEntity>)
+
+    // ---- Opt-in upload «Messwerte teilen» (v0.4.0): read-only, oldest first after a marker ------
+
+    @Query("SELECT * FROM minutes WHERE startEpochMs > :afterMs ORDER BY startEpochMs ASC, id ASC LIMIT :limit")
+    suspend fun minutesAfter(afterMs: Long, limit: Int): List<MinuteEntity>
+
+    @Query("SELECT * FROM events WHERE startEpochMs > :afterMs ORDER BY startEpochMs ASC, id ASC LIMIT :limit")
+    suspend fun eventsAfter(afterMs: Long, limit: Int): List<EventEntity>
+
+    @Query("SELECT COUNT(*) FROM minutes WHERE startEpochMs > :afterMs")
+    fun minuteCountAfter(afterMs: Long): Flow<Int>
 }
 
 @Dao

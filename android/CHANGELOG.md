@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.0-dev — unreleased
+
+### Public app (`ch.stadtlaerm.app`, version 0.4.0-dev, code 9; not published)
+
+- **«Messwerte teilen» (opt-in upload for the shared noise map).** New screen
+  Einstellungen → Messwerte teilen (server/DESIGN.md §2, §4, §9): an explanation of what is sent,
+  what is never sent (audio, the precise location, name, the raw classifier labels), where it goes
+  (api.stadtlaerm.ch, Switzerland) and how to delete; the placement step (coordinates in, hectare
+  out, on the phone; placement, floor, street side, note); the switch (off by default), «Nur über
+  WLAN» (default on), «Zuletzt gesendet», the minutes still to send, «Meine Daten auf dem Server
+  löschen» and «Neue Kennung». Uploads run 5 min after every full hour and 15 s after a measurement
+  stops (WorkManager), in batches of ≤ 1440 minutes / ≤ 2000 events, resume from the last
+  acknowledged start, and never resend records the server refused.
+- **Permissions:** the public app now has `INTERNET` and `ACCESS_NETWORK_STATE`, used only by
+  `upload/UploadClient.kt` for one host. `ACCESS_WIFI_STATE` and `RECEIVE_BOOT_COMPLETED` stay
+  removed; no location permission. PRIVACY.md, the READMEs and the website say so.
+- New dependency: `androidx.work:work-runtime-ktx` 2.9.1 (AndroidX, scheduling only). The network
+  code uses the platform's `HttpURLConnection`; no third-party SDK.
+- `dsp`: `geo/Lv95.kt`, WGS84 ↔ LV95 and hectare ids, the same formulas as the map's
+  `docs/map/lv95.js`, tested against swisstopo's reference points.
+- Nothing in the measurement path changed. The database schema is unchanged (three read-only
+  queries added).
+
+### «Stadtlärm Labor» (`0.4.0-dev-labor`)
+
+- No functional change: no network permission (its manifest removes `INTERNET` and
+  `ACCESS_NETWORK_STATE`), «Messwerte teilen» is not offered.
+
 ## 0.3.4 — 2026-10-08
 
 ### Public app (`ch.stadtlaerm.app`, not published)

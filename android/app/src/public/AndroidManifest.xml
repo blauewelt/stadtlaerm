@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PUBLIC edition only. Network access for the opt-in upload «Messwerte teilen» (server/DESIGN.md
+     §2, §4; PRIVACY.md). Used by exactly one class, upload/UploadClient.kt, for exactly one host
+     (BuildConfig.STADTLAERM_API, https://api.stadtlaerm.ch), and only after the person switched
+     sharing on. ACCESS_NETWORK_STATE: Android requires it for background jobs that wait for a
+     network («nur über WLAN»); it shows whether a connection is up and metered, nothing else. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+</manifest>

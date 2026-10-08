@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,7 +86,7 @@ fun DataScreen(modifier: Modifier = Modifier) {
         SectionCard("Export als CSV") {
             Text(
                 "Zwei Dateien (Minuten, Ereignisse), Zeitstempel ISO-8601 mit Zeitzone, Dezimalpunkt. " +
-                    "Teilen über das Android-Teilen-Menü (z. B. E-Mail, Dateien). Die App selbst hat keinen Netzwerkzugriff.",
+                    "Teilen über das Android-Teilen-Menü (z. B. E-Mail, Dateien). Ohne «Messwerte teilen» sendet die App selbst nichts.",
                 style = MaterialTheme.typography.bodySmall,
             )
             Button(onClick = {
@@ -168,6 +169,11 @@ fun DataScreen(modifier: Modifier = Modifier) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
+    var showShare by rememberSaveable { mutableStateOf(false) }
+    if (showShare && BuildConfig.UPLOAD_AVAILABLE) {
+        ShareScreen(onBack = { showShare = false }, modifier = modifier)
+        return
+    }
     val context = LocalContext.current
     val c = context.container
     val s by c.settings.state.collectAsStateWithLifecycle()
@@ -279,15 +285,19 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
             if (live.running && live.effects.isNotEmpty()) StatRow("Effekte", live.effects.joinToString(", "))
         }
+        if (BuildConfig.UPLOAD_AVAILABLE) ShareSettingsCard(onOpen = { showShare = true })
         EditionUi.SettingsSection()
         AppVersionCard()
         SectionCard("Über Stadtlärm & Datenschutz") {
             Text("Stadtlärm ${BuildConfig.VERSION_NAME} – offene Lärmmessung für Zürich. Lizenz: Apache-2.0.", style = MaterialTheme.typography.bodyMedium)
             Text(
                 "• Audio verlässt nie den Arbeitsspeicher: höchstens ca. 1 s wird für die Erkennung gepuffert, nichts wird gespeichert, protokolliert oder gesendet.\n" +
-                    "• Die App hat keine Internet-Berechtigung.\n" +
                     "• Gespeichert werden nur Kennwerte: Pegel, Statistik, Kategorie-Anteile, Ereignisse.\n" +
-                    "• Daten verlassen das Telefon nur, wenn du sie selbst exportierst und teilst.\n" +
+                    (if (BuildConfig.UPLOAD_AVAILABLE)
+                        "• Internet nutzt die App nur für «Messwerte teilen» (aus, bis du es einschaltest): Kennwerte und die Hektare an api.stadtlaerm.ch, sonst an keinen Server.\n" +
+                            "• Sonst verlassen Daten das Telefon nur, wenn du sie selbst exportierst und teilst.\n"
+                    else
+                        "• Diese Version hat keine Internet-Berechtigung. Daten verlassen das Telefon nur, wenn du sie selbst exportierst und teilst.\n") +
                     "• Pegel sind ohne Kalibrierung nur Richtwerte (Toleranz typ. ±5 dB oder mehr).\n" +
                     "• Erkennung: YAMNet (Google, Apache-2.0), AudioSet-Klassen. Es gibt keine eigene Tram-Klasse.",
                 style = MaterialTheme.typography.bodySmall,

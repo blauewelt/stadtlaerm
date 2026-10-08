@@ -1,4 +1,4 @@
-# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.3)
+# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.3; v0.4.0 in development)
 
 Stadtlärm turns an Android phone into a night-time noise logger. It measures A-weighted
 sound levels the way a sound level meter does (IEC 61672-1 A-weighting, Fast time weighting),
@@ -6,8 +6,10 @@ detects individual noise events (a motorbike, a shouting group, a tram), tags ea
 likely source using an on-device sound classifier, and summarises every night
 (22:00–06:00, the Swiss night period).
 
-**Privacy by construction:** no audio is ever stored or sent, and the app has no internet
-permission at all. See [PRIVACY.md](../PRIVACY.md). (A separate, unpublished diagnostics app,
+**Privacy by construction:** no audio is ever stored or sent. Up to v0.3.x the app has no internet
+permission at all; from v0.4.0 it uses the internet only for the opt-in upload
+[«Messwerte teilen»](#messwerte-teilen-opt-in-upload-v040) (off until switched on, one host, one
+network class, no third-party SDK). See [PRIVACY.md](../PRIVACY.md). (A separate, unpublished diagnostics app,
 «Stadtlärm Labor», can record audio; the public app contains none of its code. See
 [Labor build](#labor-build).)
 
@@ -164,7 +166,8 @@ validated on many devices — see "Status" below.
 
 ## Updates without internet access
 
-The app has no internet permission, so it cannot look for updates itself, and this stays so.
+The app never asks a server for updates itself (up to v0.3.x it had no internet permission at
+all; since v0.4.0 the internet is used only for «Messwerte teilen», never for update checks).
 Instead:
 
 - **Einstellungen → App-Version** shows «Stadtlärm 0.3.2 (Build vom 7.10.2026)» and a button
@@ -326,6 +329,59 @@ their order): minutes `orig_laeq_db`, `orig_lafmax_db`, `orig_lafmin_db`, `orig_
 `orig_l10_db`, `orig_l50_db`, `orig_l90_db`, events `orig_lafmax_db`, `orig_sel_db`,
 `orig_background_db`, and in both `recalibrated_from_id`, `recalibration_offset_db`. They are empty
 for data that was never re-evaluated.
+
+## «Messwerte teilen» (opt-in upload, v0.4.0)
+
+Phones whose owners opt in send their minute and event records to the project's server for the
+shared city noise map ([../server/DESIGN.md](../server/DESIGN.md): §2 privacy rules, §4 the exact
+request bodies, §9 the app changes). **Einstellungen → Messwerte teilen**:
+
+1. **Explanation** (shown until confirmed once): what is sent (minute levels and percentiles, valid
+   time, event count, category shares; events with start, duration, LAFmax, SEL, background,
+   category; the hectare and the placement answers; phone model, audio source, calibration; a random
+   id), what is never sent (audio, the precise location, name or account, the raw classifier labels),
+   where it goes (`api.stadtlaerm.ch`, Switzerland; only per-hectare values are public), how to delete.
+2. **Placement** («Aufstellung»): paste coordinates — WGS84 decimal degrees from a map app
+   (`47.3769, 8.5417`), LV95 from map.geo.admin.ch (`2'683'304, 1'247'925`), LV03, or a hectare id —
+   and the phone shows «Hektare: h26833_12479 – dieses Hektar wird gezeigt» at once; only that id is
+   stored and sent (`upload/CellInput.kt`, `dsp/.../geo/Lv95.kt`, the same formulas as the map's
+   `docs/map/lv95.js`). Then placement (offenes Fenster / Balkon / hinter Glas / anderes), floor,
+   street or courtyard side, an optional note (≤ 200 characters, never published). There is no map
+   in this step yet (see WORKLOG.md: open question).
+3. **The switch** «Messwerte teilen» (off by default; needs 1 and 2), «Nur über WLAN» (default on:
+   only unmetered networks), «Zuletzt gesendet: …», «Noch zu senden: n Minuten», the last error and
+   the count of records the server refused for good.
+4. **«Meine Daten auf dem Server löschen»** (confirms, waits for the server's answer, then switches
+   sharing off) and **«Neue Kennung»** (deletes the server data, then sends under a fresh id).
+
+**What happens in the background.** At the first opt-in the measurements of the last 7 days are
+included; afterwards nothing measured while sharing is off is ever sent. A WorkManager job runs
+5 minutes after every full hour, and a one-shot job 15 s after a measurement stops; both send every
+minute and event newer than the last start the server acknowledged, in batches of ≤ 1440 minutes /
+≤ 2000 events (gzip JSON, `Authorization: Bearer <token>`). Markers move only after a batch was
+acknowledged, so an interrupted upload resumes where it stopped; the server is idempotent on
+`(device, start)`. Records the server lists in `rejected` are remembered and never sent again.
+After «Alte Messungen neu bewerten» the last 7 days are sent again with the new levels. At most 24
+requests per run (the server allows 60 per device and hour); a longer backlog continues 30 min
+later. Errors back off exponentially from 10 minutes; a refused token (401) stops uploads until
+«Neue Kennung». The local database stays the source of truth: nothing is deleted on the phone.
+
+**Code.** Everything network is in `app/src/main/kotlin/ch/stadtlaerm/app/upload/`:
+`UploadClient.kt` (the only class that opens connections: `HttpURLConnection`, one host from
+`BuildConfig.STADTLAERM_API`, HTTPS only, no redirects), `Payloads.kt` (the request bodies),
+`Uploader.kt` (batching, markers, `rejected`, delete; pure JVM), `UploadState.kt` (settings, id,
+markers; the token encrypted with an Android Keystore key), `UploadWorker.kt` (WorkManager
+scheduling). The UI is `ui/ShareScreen.kt`. For a local test server build with
+`-Pstadtlaerm.api=https://…`. The Labor build has none of it enabled and no network permission
+(`BuildConfig.UPLOAD_AVAILABLE = false`, `src/labor/AndroidManifest.xml`).
+
+**Tests.** `app/src/test/.../upload/UploadTest.kt` runs the uploader against a small HTTP server
+on 127.0.0.1 (`FakeServer.kt`, the server's semantics): register, site, exact bodies (no labels, no
+originals, no coordinates), batch limits, duplicates, resume after a failed batch, `rejected`,
+refused token and «Neue Kennung», synchronous delete, failed delete, off by default, the 7-day
+window, rate limit / 4xx / no network, coordinate entry. `dsp/src/test/.../geo/Lv95Test.kt` checks
+the conversion against the five reference points of DESIGN.md §3 and against values computed with
+the website's `lv95.js`.
 
 ## Known limitations
 
@@ -545,7 +601,7 @@ Check the result (build-tools 35):
 ```sh
 A=app/build/outputs/apk/public/release/app-public-release.apk
 apksigner verify --verbose --print-certs $A   # v2 + v3, signer DN
-aapt2 dump permissions $A                     # no INTERNET
+aapt2 dump permissions $A                     # v0.4.0+: INTERNET + ACCESS_NETWORK_STATE, nothing else new
 apkanalyzer dex packages $A | grep -c ch.stadtlaerm.app.labor   # 0: no Labor code (PRIVACY.md)
 sha256sum $A
 ```
@@ -557,8 +613,9 @@ forcing every user to uninstall and reinstall, so keep the keystore and its pass
 
 1. Bump `versionName` and `versionCode` in `app/build.gradle.kts`; add a `CHANGELOG.md` entry.
 2. Build signed: `./gradlew test assemblePublicRelease -Pstadtlaerm.keystoreProperties=…`; check the
-   signer certificate SHA-256, that `aapt2 dump permissions` shows no `INTERNET` and that the dex
-   contains no Labor classes (see above and PRIVACY.md → «Labor-Build»).
+   signer certificate SHA-256, that `aapt2 dump permissions` shows exactly the list in PRIVACY.md →
+   «How to verify» (from v0.4.0 with `INTERNET` and `ACCESS_NETWORK_STATE`; the Labor APK without
+   them) and that the dex contains no Labor classes (see above and PRIVACY.md → «Labor-Build»).
 3. Copy `app/build/outputs/apk/public/release/app-public-release.apk` to
    `../docs/download/stadtlaerm.apk`. **Never** copy a Labor APK into `../docs/`.
 4. Update `../docs/index.html`: version (button note, facts, «Stand des Projekts»), size in MB
@@ -591,8 +648,10 @@ dsp/   pure Kotlin/JVM, no Android dependencies — shared with the planned ESP3
   Nights.kt, Csv.kt       night summaries, CSV export
 chart/ Android library: the history chart (drawing model, Compose Canvas) and the app theme;
        JVM tests and Paparazzi renders
+dsp/geo/Lv95.kt          WGS84 ↔ LV95 and hectare cell ids (same formulas as the map's docs/map/lv95.js)
 app/   Android: AudioRecord capture, foreground service, LiteRT YAMNet, Room, Compose UI
-  src/main/     shared code (AudioTap.kt: the no-op hook the Labor recorder plugs into)
+  src/main/     shared code (AudioTap.kt: the no-op hook the Labor recorder plugs into;
+                upload/: the opt-in «Messwerte teilen», the app's only network code)
   src/public/   the published edition (AudioTapProvider → NoAudioTap, no extra UI)
   src/labor/    Labor edition only: audio recorder, WAV/AAC writers, manifest, clip player, Labor UI, red icon
   src/testLabor/ JVM tests of the Labor recorder and clip-player parts
@@ -608,11 +667,12 @@ tools/csp_hash.py         CSP script hashes for the website's inline script (doc
 - **ESP32 sensor:** a fixed outdoor sensor (ESP32-S3 + MEMS microphone) running the same DSP
   (the `dsp` module is written to port 1:1 to C/C++ or Kotlin/Native) and the same calibration
   procedure, so phone and sensor data are comparable. See [firmware/](../firmware/README.md).
-- Opt-in, aggregated data sharing for a city-wide map (only after a separate privacy review).
+- Opt-in data sharing for a city-wide map: in development for v0.4.0 («Messwerte teilen», see
+  above; server and map in [../server/](../server/DESIGN.md)). A map picker for the placement step.
 - Slow time weighting, Lnight/Lden reporting per ISO 1996; zoom and export of the chart.
 
 ## Third-party components
 
 - YAMNet model (`app/src/main/assets/yamnet.tflite`, MediaPipe float32 build) and its AudioSet
   label list — Google, Apache-2.0.
-- LiteRT (TensorFlow Lite runtime), AndroidX, Jetpack Compose, Room, kotlinx — Apache-2.0.
+- LiteRT (TensorFlow Lite runtime), AndroidX (incl. WorkManager), Jetpack Compose, Room, kotlinx — Apache-2.0.
