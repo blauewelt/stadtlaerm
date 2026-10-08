@@ -1,0 +1,10 @@
+# Caddy gets and renews the Let's Encrypt certificate for API_HOST on its own;
+# ports 80 and 443 must reach this machine and the DNS record must point here.
+{$API_HOST} {
+	encode gzip
+	request_body {
+		max_size 2MB
+	}
+	# No access log: the server keeps no per-request IP addresses on disk.
+	reverse_proxy app:8000
+}
