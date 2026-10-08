@@ -1,0 +1,4 @@
+start,duration_s,lafmax_db,sel_db,background_db,threshold_db,dominant_category,dominant_score,label1,score1,label2,score2,label3,score3,classifier_frames,calibration_id,audio_source,calibrated
+2026-10-07T22:01:12.250+02:00,1.500,52.0,50.1,32.0,10.0,road_traffic,0.310,Vehicle,0.310,Car,0.200,Engine,0.100,2,,UNPROCESSED,false
+2026-10-07T22:02:30.500+02:00,3.250,61.0,60.2,34.0,10.0,loud_vehicle,0.520,Motorcycle,0.520,Vehicle,0.300,Engine,0.150,3,,UNPROCESSED,false
+2026-10-08T03:00:40Z,0.750,33.0,30.0,25.0,10.0,unclassified,0.050,Silence,0.400,Wind,0.100,Bird,0.050,1,,UNPROCESSED,false

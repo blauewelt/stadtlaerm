@@ -26,6 +26,7 @@ source classification runs on the phone and only levels and statistics are kept.
 |---|---|
 | [`android/`](android/) | Android app (Kotlin): measurement service, on-device sound classifier, calibration, UI, plus the platform-independent `dsp` module. See [android/README.md](android/README.md) for install, calibration and build instructions |
 | [`firmware/`](firmware/) | Planned ESP32-S3 windowsill sensor (placeholder, no code yet) |
+| [`tools/weather/`](tools/weather/) | Command-line tool that joins MeteoSwiss station weather (wind, gusts, rain, temperature) with the app's CSV export, per minute, hour and night |
 | [`docs/`](docs/) | The website [stadtlaerm.ch](https://stadtlaerm.ch) (static HTML/CSS, one hash-pinned inline script on `update.html`, served by GitHub Pages) and the signed APK in `docs/download/` |
 | [`PRIVACY.md`](PRIVACY.md) | What the project does with sound, with references into the code |
 | [`LICENSE`](LICENSE) | Apache License 2.0 |
