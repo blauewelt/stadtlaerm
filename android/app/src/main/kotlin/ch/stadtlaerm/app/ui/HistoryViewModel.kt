@@ -7,6 +7,7 @@ import ch.stadtlaerm.app.container
 import ch.stadtlaerm.app.data.AppSettings
 import ch.stadtlaerm.app.data.Mappers.toEvent
 import ch.stadtlaerm.app.data.Mappers.toRecord
+import ch.stadtlaerm.app.edition.EditionClips
 import ch.stadtlaerm.chart.ChartData
 import ch.stadtlaerm.chart.RangeMode
 import ch.stadtlaerm.chart.TimeWindow
@@ -54,15 +55,23 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
         }.flowOn(kotlinx.coroutines.Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    /** Data of the current window. Keeps its last value while a new window loads. */
+    /**
+     * Data of the current window. Keeps its last value while a new window loads. Labor build: the
+     * events' clip references come from the clip index (built once and cached until the manifest
+     * or the clips change); public: none.
+     */
     val data: StateFlow<ChartData?> = _window.filterNotNull().flatMapLatest { w ->
         combine(
             repo.minutesBetween(w.startMs, w.endMs),
             repo.eventsBetween(w.startMs, w.endMs),
             repo.lastValidEndBefore(w.startMs),
             repo.firstValidStartAfter(w.endMs),
-        ) { m, e, prev, next ->
-            ChartData(w, m.map { it.toRecord() }, e.map { it.toEvent() }, System.currentTimeMillis(), prev, next)
+            EditionClips.version,
+        ) { m, e, prev, next, _ ->
+            ChartData(
+                w, m.map { it.toRecord() }, e.map { it.toEvent() }, System.currentTimeMillis(), prev, next,
+                clipRefs = EditionClips.clipRefs(getApplication(), e),
+            )
         }
     }.flowOn(kotlinx.coroutines.Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)

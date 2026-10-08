@@ -66,7 +66,10 @@ class ChartScreenshots {
     }
 
     @Composable
-    private fun Screen(data: ChartData, dark: Boolean, highlight: String = "loud_vehicle", selection: Selection? = null, floor: Double = 30.0) {
+    private fun Screen(
+        data: ChartData, dark: Boolean, highlight: String = "loud_vehicle", selection: Selection? = null, floor: Double = 30.0,
+        onPlayClip: ((String) -> Unit)? = null,
+    ) {
         StadtlaermTheme(dark = dark) {
             Column(Modifier.fillMaxSize()) {
                 Text(
@@ -76,6 +79,7 @@ class ChartScreenshots {
                 HistorySection(
                     window = data.window, data = data, zone = zone, highlight = highlight, eventFloorDb = floor,
                     canGoNext = Windows(zone).canGoNext(data.window, data.nowMs), selection = selection, actions = NoActions,
+                    onPlayClip = onPlayClip,
                 )
             }
         }
@@ -113,6 +117,22 @@ class ChartScreenshots {
         val d = SyntheticData.fridayNight()
         val loudest = d.events.maxBy { it.lafMaxDb }
         snap("tooltip_event_light") { Screen(d, dark = false, selection = Selection.Event(loudest, highlighted = true)) }
+    }
+
+    /** Labor build: every third event has a clip (ring accent); the tooltip gets «Abspielen». */
+    @Test fun eventTooltipWithClip() {
+        val base = SyntheticData.fridayNight()
+        val sorted = base.events.sortedBy { it.startEpochMs }
+        val loudest = base.events.maxBy { it.lafMaxDb }
+        val refs = sorted.filterIndexed { i, _ -> i % 3 == 0 }.associate { it.startEpochMs to "clips/ev_${it.startEpochMs}.wav" } +
+            (loudest.startEpochMs to "clips/ev_loudest.wav")
+        val d = base.copy(clipRefs = refs)
+        snap("tooltip_event_clip_light") {
+            Screen(d, dark = false, selection = Selection.Event(loudest, highlighted = true, clipRef = "clips/ev_loudest.wav"), onPlayClip = {})
+        }
+        snap("tooltip_event_clip_dark") {
+            Screen(d, dark = true, selection = Selection.Event(loudest, highlighted = true, clipRef = "clips/ev_loudest.wav"), onPlayClip = {})
+        }
     }
 
     @Test fun minuteTooltipNearRightEdge() {

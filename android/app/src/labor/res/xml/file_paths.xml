@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Labor edition: replaces the public file_paths.xml. Adds the folder for the recordings ZIP
-     («Als ZIP teilen»). -->
+     («Als ZIP teilen») and the event clips (player → «Teilen», v0.3.4). -->
 <paths>
     <!-- Exported CSV/JSON aggregates (as in the public app). -->
     <cache-path name="exports" path="exports/" />
     <!-- Labor only: ZIP of the audio clips + manifest. -->
     <external-cache-path name="labor_share" path="labor_share/" />
     <cache-path name="labor_share_internal" path="labor_share/" />
+    <!-- Labor only: a single event clip (WAV), shared from the clip player. -->
+    <external-files-path name="labor_clips" path="audio/clips/" />
+    <files-path name="labor_clips_internal" path="external-fallback/audio/clips/" />
 </paths>

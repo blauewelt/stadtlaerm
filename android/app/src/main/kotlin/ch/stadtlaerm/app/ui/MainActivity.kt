@@ -78,6 +78,8 @@ fun AppRoot() {
                 3 -> DataScreen(m)
                 else -> SettingsScreen(m)
             }
+            // Public: nothing. Labor: the clip player sheet.
+            EditionUi.Overlay()
         }
     }
 }

@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.3.4 — 2026-10-08
+
+### Public app (`ch.stadtlaerm.app`, not published)
+
+- **No functional change.** Version 0.3.4 (code 8) only so that both flavours share one version.
+  The chart gained optional, flavour-agnostic hooks for event clips (a clip reference per event,
+  an `onPlayClip` callback); the public app passes none, so it draws and behaves exactly as in
+  0.3.3. This build is not published; stadtlaerm.ch stays on 0.3.3.
+
+### «Stadtlärm Labor» (`ch.stadtlaerm.labor`, `0.3.4-labor`, never published): listen to clips
+
+- **Chart:** events that have a clip get a thin ring around their dot (the dot colour keeps its
+  meaning); their tooltip has an «Abspielen» button. The clip of an event is found through the
+  manifest (event id, checked against the event's start time), indexed once and cached until the
+  manifest or the clips folder changes.
+- **Player («Clip» sheet):** event time, category, LAFmax, event duration, clip length; a bar of
+  the clip with the pre-roll and post-roll shaded and the event span highlighted (ticks where
+  classifier windows end), tap/drag or the scrub bar to seek; play/pause; «‹ Vorheriger» /
+  «Nächster ›» step to the neighbouring event with a clip in the chart window (by time); «Teilen»
+  shares the WAV (FileProvider). Below the bar: the classifier result of the second being heard,
+  read from the clip's `classifierTrace` (top-3 labels with scores, the category decision, the
+  input gain, LAF). Played on the media stream (`USAGE_MEDIA`, MediaPlayer, transient audio
+  focus); a hint appears if the media volume is 0 or the phone is on silent, and while a
+  measurement runs (the speaker is measured too). Playback only, the microphone is not touched.
+- **Einstellungen → Labor → «Clips anhören»:** all clips newest first or only the current night's
+  (time, category, LAFmax, duration, whether a trace exists), category filter chips, count and
+  total size; tapping plays it, «‹»/«›» step through the filtered list.
+- **Messen → «Letzte Ereignisse»:** the red record dot is now a button that plays the clip.
+- Robustness: a missing or corrupt WAV shows «Clip nicht gefunden»; the player is released when
+  the sheet closes, when a measurement starts or stops, and pauses when the app goes to the
+  background. Clips without a manifest line (only the file) still play, with the time from the
+  file name.
+- New JVM tests (`app/src/testLabor/…/ClipPlaybackLogicTest.kt`): manifest clip index (event id →
+  file, trace), neighbour order, trace lookup for a playback position, progress-bar geometry
+  (also truncated clips), WAV check; chart: dot accent and «Abspielen» only with a clip reference.
+
 ## 0.3.3 — 2026-10-07
 
 ### Public app (`ch.stadtlaerm.app`, published)

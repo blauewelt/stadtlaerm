@@ -90,6 +90,9 @@ is not compiled into the public APK at all. The shared code only contains:
 - in `MeasurementEngine`, listener hooks that report sample indices of event start/confirmation/
   end, the clock anchor and each classifier result (label names, scores, gain and level — numbers
   only; the default implementations do nothing).
+- in the chart (since v0.3.4), an optional clip reference per event and an optional «Abspielen»
+  callback. The public `EditionClips` provides no references and no callback, so the public chart
+  never shows a play button; the clip index and the player (MediaPlayer) live in `app/src/labor/`.
 
 The public manifest and permissions are unchanged (no `INTERNET`, no storage permission).
 

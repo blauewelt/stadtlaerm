@@ -58,6 +58,8 @@ interface HistoryActions {
  * chips and legend, and the summary row.
  *
  * [data] may belong to the previous window while the new one loads; it is then shown dimmed.
+ *
+ * [onPlayClip]: Labor build only (null in the public app), see [NoiseChart].
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -71,6 +73,7 @@ fun HistorySection(
     selection: Selection?,
     actions: HistoryActions,
     modifier: Modifier = Modifier,
+    onPlayClip: ((clipRef: String) -> Unit)? = null,
 ) {
     val windows = remember(zone) { Windows(zone) }
     val model = remember(data, highlight, eventFloorDb, zone) {
@@ -136,6 +139,7 @@ fun HistorySection(
                         model = model, selection = selection, onSelect = actions::onSelect, onNavigate = actions::onShift,
                         canGoNext = canGoNext, surfaceColor = cardColor, height = chartHeight,
                         modifier = if (loading) Modifier.alpha(0.5f) else Modifier,
+                        onPlayClip = onPlayClip,
                     )
                 }
                 if (model != null && model.eventsCapped) {
@@ -162,6 +166,9 @@ fun HistorySection(
                     }
                     LegendItem(Swatch.Line(palette.series1), if (window.mode == RangeMode.WEEK) "LAeq pro Stunde" else "LAeq pro Minute")
                     LegendItem(Swatch.Band(palette.series1.copy(alpha = palette.bandAlpha).compositeOver(cardColor)), "Hintergrund L90–L10")
+                    if (onPlayClip != null && model != null && model.clipRefs.isNotEmpty()) {
+                        LegendItem(Swatch.Ring(scheme.onSurface.copy(alpha = 0.85f)), "mit Clip (antippen › $PLAY_CLIP_LABEL)")
+                    }
                 }
             }
         }
@@ -226,6 +233,7 @@ private sealed interface Swatch {
     data class Dot(val color: Color, val small: Boolean = false) : Swatch
     data class Line(val color: Color) : Swatch
     data class Band(val color: Color) : Swatch
+    data class Ring(val color: Color) : Swatch
 }
 
 @Composable
@@ -236,6 +244,10 @@ private fun LegendItem(swatch: Swatch, text: String) {
                 is Swatch.Dot -> drawCircle(swatch.color, if (swatch.small) size.height / 3 else size.height / 2, Offset(size.width / 2, size.height / 2))
                 is Swatch.Line -> drawLine(swatch.color, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 2.dp.toPx(), StrokeCap.Round)
                 is Swatch.Band -> drawRect(swatch.color)
+                is Swatch.Ring -> drawCircle(
+                    swatch.color, size.height / 2 - 1.dp.toPx(), Offset(size.width / 2, size.height / 2),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(1.25.dp.toPx()),
+                )
             }
         }
         Text(text, style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)

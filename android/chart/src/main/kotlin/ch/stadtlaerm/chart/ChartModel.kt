@@ -26,7 +26,24 @@ data class ChartData(
     val prevValidEndMs: Long? = null,
     /** Start of the first valid minute after the window. */
     val nextValidStartMs: Long? = null,
+    /**
+     * Optional audio clip per event, keyed by the event's [NoiseEvent.startEpochMs]. Only the Labor
+     * build fills it (an opaque reference the app resolves itself); the public app has no clips
+     * and leaves it empty.
+     */
+    val clipRefs: Map<Long, String> = emptyMap(),
 )
+
+/**
+ * The clip references of the events in [ChartData.window] that reach [eventFloorDb], in time order
+ * (for stepping to the previous/next event with a clip).
+ */
+fun ChartData.clipRefsInTimeOrder(eventFloorDb: Double): List<String> =
+    if (clipRefs.isEmpty()) emptyList()
+    else events.filter { it.startEpochMs in window && it.reachesFloor(eventFloorDb) }
+        .sortedBy { it.startEpochMs }
+        .mapNotNull { clipRefs[it.startEpochMs] }
+        .distinct()
 
 /**
  * One plotted sample: a minute (night, day) or an hour (week). Levels are NaN when not [valid].
@@ -120,7 +137,12 @@ class ChartModel(
     val highlight: String,
     val summary: WindowSummary,
     val zone: ZoneId,
+    /** Clip reference per event start (see [ChartData.clipRefs]); empty in the public app. */
+    val clipRefs: Map<Long, String> = emptyMap(),
 ) {
+    /** The event's clip reference, or null (always null in the public app). */
+    fun clipRefOf(e: NoiseEvent): String? = if (clipRefs.isEmpty()) null else clipRefs[e.startEpochMs]
+
     val isEmpty: Boolean get() = segments.isEmpty() && otherEvents.isEmpty() && highlightedEvents.isEmpty()
     val anyUncalibrated: Boolean get() = summary.anyUncalibrated
 
@@ -185,7 +207,7 @@ class ChartModel(
                 window = w, nowMs = data.nowMs, hourly = hourly, points = points, segments = segments, gaps = gaps,
                 nightSpans = windows.nightSpans(w), gridTicks = windows.gridTicks(w), axisLabels = windows.axisLabels(w),
                 yRange = yRange, otherEvents = other, highlightedEvents = hl, eventsCapped = capped,
-                highlight = highlight, summary = summary, zone = zone,
+                highlight = highlight, summary = summary, zone = zone, clipRefs = data.clipRefs,
             )
         }
 

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,18 +53,25 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.stadtlaerm.app.audio.AudioTap
 import ch.stadtlaerm.app.audio.NoAudioTap
 import ch.stadtlaerm.app.container
+import ch.stadtlaerm.app.data.EventEntity
+import ch.stadtlaerm.app.labor.ClipLibrary
+import ch.stadtlaerm.app.labor.ClipPlayerSheet
 import ch.stadtlaerm.app.labor.ClipRateSampler
+import ch.stadtlaerm.app.labor.ClipsListDialog
 import ch.stadtlaerm.app.labor.Labor
 import ch.stadtlaerm.app.labor.LaborDirs
+import ch.stadtlaerm.app.labor.LaborPlayer
 import ch.stadtlaerm.app.labor.LaborRecorder
 import ch.stadtlaerm.app.labor.RecorderStatus
 import ch.stadtlaerm.app.labor.StorageBudget
+import ch.stadtlaerm.app.labor.toastClipNotFound
 import ch.stadtlaerm.app.ui.SectionCard
 import ch.stadtlaerm.app.ui.StatRow
 import ch.stadtlaerm.app.ui.SwissLocale
 import ch.stadtlaerm.app.ui.shareFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -93,7 +101,49 @@ object AudioTapProvider {
     }
 }
 
+/**
+ * Labor: the event clips for the chart (v0.3.4). [clipRefs] maps the start time of each event that
+ * has a clip to its clip reference (the manifest is indexed once and cached until it changes).
+ */
+object EditionClips {
+    /** Changes when clips are written or deleted (the chart data is then re-evaluated). */
+    val version: Flow<Long> = Labor.filesVersion
+
+    /** Event start (epoch ms) → clip reference, for the events of a chart window. Blocking (file I/O). */
+    fun clipRefs(context: Context, events: List<EventEntity>): Map<Long, String> {
+        if (events.isEmpty()) return emptyMap()
+        val index = ClipLibrary.index(context)
+        if (index.size == 0) return emptyMap()
+        val out = HashMap<Long, String>()
+        for (e in events) index.clipRefFor(e.id, e.startEpochMs)?.let { out[e.startEpochMs] = it }
+        return out
+    }
+
+    /** Opens the clip player on a clip; «‹» / «›» step through [playlist]. */
+    val player: ((clipRef: String, playlist: List<String>) -> Unit)? = { ref, playlist -> LaborPlayer.open(ref, playlist) }
+}
+
 object EditionUi {
+    /**
+     * Hosted once at the app root: the clip player sheet. It is closed (and its MediaPlayer
+     * released) whenever a measurement starts or stops.
+     */
+    @Composable
+    fun Overlay() {
+        val context = LocalContext.current
+        val request by LaborPlayer.request.collectAsStateWithLifecycle()
+        val live by context.container.live.collectAsStateWithLifecycle()
+        val running = live.running
+        var lastRunning by remember { mutableStateOf(running) }
+        LaunchedEffect(running) {
+            if (running != lastRunning) {
+                lastRunning = running
+                LaborPlayer.close()
+            }
+        }
+        request?.let { r -> ClipPlayerSheet(r, onDismiss = { LaborPlayer.close() }) }
+    }
+
     /** The permanent red banner above every screen. */
     @Composable
     fun Banner() {
@@ -143,6 +193,7 @@ object EditionUi {
         var zipPlan by remember { mutableStateOf<LaborDirs.Stats?>(null) }
         var zipBusy by remember { mutableStateOf(false) }
         var confirmDelete by remember { mutableStateOf(false) }
+        var showClips by remember { mutableStateOf(false) }
         var message by remember { mutableStateOf<String?>(null) }
         val recordingNow = st.recording && live.running
 
@@ -207,6 +258,7 @@ object EditionUi {
             if (recordingNow && st.droppedThisSession > 0) {
                 Text("Verworfen (Schreiben zu langsam oder Speicher voll): ${st.droppedThisSession}", style = MaterialTheme.typography.bodySmall)
             }
+            OutlinedButton(onClick = { showClips = true }, enabled = (sts?.clipCount ?: 0) > 0) { Text("Clips anhören") }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { showFolder = true }) { Text("Ordner anzeigen") }
                 OutlinedButton(
@@ -218,6 +270,8 @@ object EditionUi {
             if (recordingNow) Text("Löschen ist während einer Aufnahme nicht möglich.", style = MaterialTheme.typography.bodySmall)
             message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
+
+        if (showClips) ClipsListDialog(onDismiss = { showClips = false })
 
         if (confirmOn) {
             AlertDialog(
@@ -314,6 +368,7 @@ object EditionUi {
                 confirmButton = {
                     TextButton(onClick = {
                         confirmDelete = false
+                        LaborPlayer.close()
                         scope.launch {
                             withContext(Dispatchers.IO) {
                                 dirs.deleteAll()
@@ -335,15 +390,28 @@ object EditionUi {
         }
     }
 
-    /** A small red record dot after events that have a clip. */
+    /** A small red record dot after events that have a clip; tapping it plays the clip. */
     @Composable
     fun EventMarker(eventId: Long) {
         val ids by Labor.clipEventIds.collectAsStateWithLifecycle()
         if (eventId in ids) {
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
             Box(
-                Modifier.padding(start = 4.dp).size(10.dp).clip(CircleShape).background(LaborRed)
-                    .semantics { contentDescription = "Clip vorhanden" }
-            )
+                Modifier.padding(start = 2.dp).size(28.dp).clip(CircleShape)
+                    .clickable(onClickLabel = "Clip abspielen") {
+                        scope.launch {
+                            val index = withContext(Dispatchers.IO) { ClipLibrary.index(context) }
+                            val e = index.byEventId(eventId)
+                            if (e == null) toastClipNotFound(context)
+                            else LaborPlayer.open(e.ref, index.entries.map { it.ref })
+                        }
+                    }
+                    .semantics { contentDescription = "Clip vorhanden, abspielen" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(LaborRed))
+            }
         }
     }
 }

@@ -36,6 +36,8 @@ import ch.stadtlaerm.chart.HistoryActions
 import ch.stadtlaerm.chart.HistorySection
 import ch.stadtlaerm.chart.RangeMode
 import ch.stadtlaerm.chart.Selection
+import ch.stadtlaerm.chart.clipRefsInTimeOrder
+import ch.stadtlaerm.app.edition.EditionClips
 import ch.stadtlaerm.dsp.NightSummary
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
@@ -77,6 +79,10 @@ fun NightsScreen(modifier: Modifier = Modifier, vm: HistoryViewModel = viewModel
                     eventFloorDb = settings.eventMinLevelDb,
                     canGoNext = vm.windows.canGoNext(w, System.currentTimeMillis()),
                     selection = selectionState.value, actions = actions,
+                    // Labor build only: play an event's clip; «‹»/«›» step through the window's clips.
+                    onPlayClip = EditionClips.player?.let { play ->
+                        { ref: String -> play(ref, data?.clipRefsInTimeOrder(settings.eventMinLevelDb) ?: listOf(ref)) }
+                    },
                 )
             }
         }

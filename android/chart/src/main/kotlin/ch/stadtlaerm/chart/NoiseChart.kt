@@ -49,6 +49,10 @@ private class ChartDims(d: androidx.compose.ui.unit.Density) {
     val gap6 = with(d) { 6.dp.toPx() }
     val gap8 = with(d) { 8.dp.toPx() }
     val tooltipPad = with(d) { 8.dp.toPx() }
+    val clipAccentGap = with(d) { 1.dp.toPx() }
+    val clipAccentStroke = with(d) { 1.25.dp.toPx() }
+    val buttonPadH = with(d) { 12.dp.toPx() }
+    val buttonPadV = with(d) { 6.dp.toPx() }
     val corner = with(d) { 8.dp.toPx() }
     val flingVelocity = with(d) { 800.dp.toPx() }
 }
@@ -68,6 +72,9 @@ private class ChartColors(
     val tooltipBg: Color,
     val tooltipBorder: Color,
     val crosshair: Color,
+    /** Ring around dots of events with an audio clip (a text colour: the fill keeps its meaning). */
+    val clipAccent: Color,
+    val buttonBg: Color,
 )
 
 /**
@@ -79,6 +86,9 @@ private class ChartColors(
  * the plot is tapped; while it is open, horizontal dragging moves the crosshair. With no tooltip
  * open, a horizontal drag of ≥ 15 % of the width or a fling moves one window earlier/later.
  * Vertical drags are left to the scrolling list.
+ *
+ * [onPlayClip] (Labor build only; null in the public app): events with a clip reference get a ring
+ * accent, and their tooltip a «Abspielen» button that calls it with the clip reference.
  */
 @Composable
 fun NoiseChart(
@@ -90,6 +100,7 @@ fun NoiseChart(
     surfaceColor: Color,
     modifier: Modifier = Modifier,
     height: Dp = 248.dp,
+    onPlayClip: ((clipRef: String) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val dims = remember(density) { ChartDims(density) }
@@ -110,11 +121,15 @@ fun NoiseChart(
             tooltipBg = scheme.surface,
             tooltipBorder = scheme.outline.copy(alpha = 0.5f),
             crosshair = scheme.onSurface.copy(alpha = 0.45f),
+            clipAccent = scheme.onSurface.copy(alpha = 0.85f),
+            buttonBg = scheme.primary,
         )
     }
     val measurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = colors.label)
     val tipStyle = MaterialTheme.typography.bodySmall.copy(color = colors.text)
+    val buttonStyle = MaterialTheme.typography.labelLarge.copy(color = MaterialTheme.colorScheme.onPrimary)
+    val canPlay = onPlayClip != null
 
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val widthPx = constraints.maxWidth.toFloat()
@@ -124,11 +139,16 @@ fun NoiseChart(
         val layout = remember(model, widthPx, heightPx, labelStyle) {
             ChartLayout.build(model, widthPx, heightPx, dims, measurer, labelStyle)
         }
-        val tooltip = remember(selection, model, tipStyle) {
+        val tooltip = remember(selection, model, tipStyle, buttonStyle, canPlay) {
             selection?.let { tooltipLines(it, model) }?.let { lines ->
-                lines.mapIndexed { i, s ->
-                    measurer.measure(s, if (i == 0) tipStyle.copy(fontWeight = FontWeight.SemiBold) else tipStyle)
-                }
+                val clipRef = tooltipPlayClip(selection, canPlay)
+                Tip(
+                    lines.mapIndexed { i, s ->
+                        measurer.measure(s, if (i == 0) tipStyle.copy(fontWeight = FontWeight.SemiBold) else tipStyle)
+                    },
+                    button = clipRef?.let { measurer.measure("▶ $PLAY_CLIP_LABEL", buttonStyle) },
+                    clipRef = clipRef,
+                )
             }
         }
 
@@ -136,8 +156,10 @@ fun NoiseChart(
         val currentSelection by rememberUpdatedState(selection)
         val currentTooltipRect by rememberUpdatedState(tooltip?.let { tooltipRect(layout, selection!!, it, dims) })
         val currentCanGoNext by rememberUpdatedState(canGoNext)
+        val currentTip by rememberUpdatedState(tooltip)
         val select by rememberUpdatedState(onSelect)
         val navigate by rememberUpdatedState(onNavigate)
+        val play by rememberUpdatedState(onPlayClip)
 
         Canvas(
             Modifier
@@ -185,7 +207,15 @@ fun NoiseChart(
                         // Tap (or short drag): tooltip tap closes it, plot tap selects, outside clears.
                         val tipRect = currentTooltipRect
                         if (tipRect != null && last.x in tipRect.left..tipRect.right && last.y in tipRect.top..tipRect.bottom) {
-                            select(null)
+                            // «Abspielen» plays the clip (the tooltip stays); elsewhere the tooltip closes.
+                            val tip = currentTip
+                            val btn = tip?.let { buttonRect(tipRect, it, dims) }
+                            val ref = tip?.clipRef
+                            if (btn != null && ref != null && last.x in btn.left..btn.right && last.y in btn.top..btn.bottom) {
+                                play?.invoke(ref)
+                            } else {
+                                select(null)
+                            }
                         } else {
                             select(geo.hitTest(last.x, last.y, dims.touchRadius))
                         }
@@ -281,13 +311,16 @@ private fun DrawScope.drawChart(l: ChartLayout, c: ChartColors, d: ChartDims) {
         drawPath(path, c.series1, style = Stroke(width = d.line, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
     // Events: others below, highlighted on top; each with a ring in the card surface colour.
+    // Events with an audio clip (Labor build) get a thin outer ring; the fill keeps its meaning.
     for (dot in g.otherDots) {
         drawCircle(c.surface, d.otherRadius + d.otherRing, Offset(dot.x, dot.y))
         drawCircle(c.other, d.otherRadius, Offset(dot.x, dot.y))
+        if (dot.hasClipAccent) drawClipAccent(dot, d.otherRadius + d.otherRing, c, d)
     }
     for (dot in g.highlightDots) {
         drawCircle(c.surface, d.dotRadius + d.ring, Offset(dot.x, dot.y))
         drawCircle(c.series2, d.dotRadius, Offset(dot.x, dot.y))
+        if (dot.hasClipAccent) drawClipAccent(dot, d.dotRadius + d.ring, c, d)
     }
     // Axis labels (text colours only).
     for ((lab, y) in l.yLabels) {
@@ -303,11 +336,34 @@ private fun DrawScope.drawChart(l: ChartLayout, c: ChartColors, d: ChartDims) {
     }
 }
 
+private fun DrawScope.drawClipAccent(dot: Dot, outerRadius: Float, c: ChartColors, d: ChartDims) {
+    drawCircle(
+        c.clipAccent, outerRadius + d.clipAccentGap + d.clipAccentStroke / 2, Offset(dot.x, dot.y),
+        style = Stroke(d.clipAccentStroke),
+    )
+}
+
+/** Measured tooltip: text lines and, for an event with a playable clip, the «Abspielen» button. */
+private class Tip(val lines: List<TextLayoutResult>, val button: TextLayoutResult?, val clipRef: String?)
+
+private fun buttonHeight(t: Tip, d: ChartDims): Float = t.button?.let { it.size.height + 2 * d.buttonPadV } ?: 0f
+
+/** The «Abspielen» button inside the tooltip box [r] (bottom left), or null. */
+private fun buttonRect(r: androidx.compose.ui.geometry.Rect, t: Tip, d: ChartDims): androidx.compose.ui.geometry.Rect? {
+    val b = t.button ?: return null
+    val h = buttonHeight(t, d)
+    val left = r.left + d.tooltipPad
+    val bottom = r.bottom - d.tooltipPad
+    return androidx.compose.ui.geometry.Rect(left, bottom - h, left + b.size.width + 2 * d.buttonPadH, bottom)
+}
+
 /** Tooltip box position: right of the crosshair, flipped left near the right edge, inside the plot. */
-private fun tooltipRect(l: ChartLayout, s: Selection, lines: List<TextLayoutResult>, d: ChartDims): androidx.compose.ui.geometry.Rect {
+private fun tooltipRect(l: ChartLayout, s: Selection, tip: Tip, d: ChartDims): androidx.compose.ui.geometry.Rect {
     val p = l.geometry.plot
-    val w = lines.maxOf { it.size.width } + 2 * d.tooltipPad
-    val h = lines.sumOf { it.size.height } + 2 * d.tooltipPad
+    val lines = tip.lines
+    val buttonW = tip.button?.let { it.size.width + 2 * d.buttonPadH } ?: 0f
+    val w = maxOf(lines.maxOf { it.size.width }.toFloat(), buttonW) + 2 * d.tooltipPad
+    val h = lines.sumOf { it.size.height } + 2 * d.tooltipPad + (if (tip.button != null) d.gap6 + buttonHeight(tip, d) else 0f)
     val x = l.geometry.selectionX(s)
     var left = x + d.gap8
     if (left + w > p.right) left = x - d.gap8 - w
@@ -321,7 +377,7 @@ private fun tooltipRect(l: ChartLayout, s: Selection, lines: List<TextLayoutResu
     return androidx.compose.ui.geometry.Rect(left, top, left + w, top + h)
 }
 
-private fun DrawScope.drawSelection(l: ChartLayout, s: Selection, lines: List<TextLayoutResult>, c: ChartColors, d: ChartDims) {
+private fun DrawScope.drawSelection(l: ChartLayout, s: Selection, tip: Tip, c: ChartColors, d: ChartDims) {
     val g = l.geometry
     val p = g.plot
     val x = g.selectionX(s)
@@ -339,18 +395,38 @@ private fun DrawScope.drawSelection(l: ChartLayout, s: Selection, lines: List<Te
             drawCircle(c.text, r + ring + d.grid * 2, Offset(x, y), style = Stroke(d.grid * 2))
             drawCircle(c.surface, r + ring, Offset(x, y))
             drawCircle(if (s.highlighted) c.series2 else c.other, r, Offset(x, y))
+            if (s.clipRef != null) {
+                drawCircle(c.clipAccent, r + ring + d.clipAccentGap + d.clipAccentStroke / 2, Offset(x, y), style = Stroke(d.clipAccentStroke))
+            }
         }
         is Selection.NoData -> Unit
     }
-    val r = tooltipRect(l, s, lines, d)
+    val r = tooltipRect(l, s, tip, d)
     drawRoundRect(c.tooltipBg, r.topLeft, r.size, CornerRadius(d.corner))
     drawRoundRect(c.tooltipBorder, r.topLeft, r.size, CornerRadius(d.corner), style = Stroke(d.grid))
     var y = r.top + d.tooltipPad
-    for (line in lines) {
+    for (line in tip.lines) {
         drawText(line, topLeft = Offset(r.left + d.tooltipPad, y))
         y += line.size.height
     }
+    val b = tip.button
+    val br = buttonRect(r, tip, d)
+    if (b != null && br != null) {
+        drawRoundRect(c.buttonBg, br.topLeft, br.size, CornerRadius(br.height / 2))
+        drawText(b, topLeft = Offset(br.left + d.buttonPadH, br.top + d.buttonPadV))
+    }
 }
+
+/** Label of the tooltip button that plays an event's audio clip (Labor build). */
+const val PLAY_CLIP_LABEL = "Abspielen"
+
+/**
+ * The clip the tooltip's «Abspielen» button plays, or null if the tooltip has no button: only an
+ * event with a clip reference gets one, and only if the screen can play clips ([canPlay], i.e. an
+ * onPlayClip callback was given; never in the public app).
+ */
+fun tooltipPlayClip(s: Selection?, canPlay: Boolean): String? =
+    if (canPlay && s is Selection.Event) s.clipRef else null
 
 /** Tooltip text for a selection. */
 fun tooltipLines(s: Selection, model: ChartModel): List<String> {

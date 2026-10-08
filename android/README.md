@@ -391,7 +391,7 @@ and the update check have not been tried on a phone yet.
 
 ## Labor build
 
-«Stadtlärm Labor» (`ch.stadtlaerm.labor`, version name `0.3.3-labor`) is a separate app built
+«Stadtlärm Labor» (`ch.stadtlaerm.labor`, version name `0.3.4-labor`) is a separate app built
 from the same code that can **record audio**, to debug the event detector and the sound-source
 classifier with real sound — e.g. why highway passes of cars and motorbikes (3–10 s, ≈ 13 dB above
 a quiet background) are not recognised: each clip comes with the classifier's per-second results
@@ -470,6 +470,27 @@ category, top-3 labels, file, `offsetOfEventStartInClipMs`, `truncated`, sample 
 encoder could not keep up with, filled with silence so the mapping holds), `storage_full`, and
 `session_stop` with the drop counts (clips skipped by the clip rate, dropped because the writer
 was busy or the storage full).
+
+**Listening to clips** (since 0.3.4). Three ways in, all opening the same «Clip» player:
+
+- **Nächte:** events with a clip have a thin ring around their dot. Tap the dot, then «▶ Abspielen»
+  in the tooltip.
+- **Einstellungen → Labor → «Clips anhören»:** all clips newest first, or «Diese Nacht» (the night
+  22:00–06:00 that is running or ended last); filter chips by category; count and total size on
+  top. Tap a row to play it.
+- **Messen → «Letzte Ereignisse»:** tap the red dot after an event.
+
+The player plays the WAV through the media volume (use the volume keys; a hint appears if the
+media volume is 0 or the phone is on silent). The bar shows the whole clip: the 5 s pre-roll and
+the post-roll shaded, the event highlighted, small ticks where the classifier's 1 s windows end;
+tap or drag the bar (or the slider) to seek. Below it: the classifier result for the second being
+heard — top-3 AudioSet labels with scores, the category decision («ignoriert» for silenced/invalid
+audio), the input gain and LAF — taken from the clip's `classifierTrace` in the manifest. «‹
+Vorheriger» / «Nächster ›» step to the neighbouring clip by event time (from the chart: the clips of
+the chart window; from the list: the filtered list; from «Letzte Ereignisse»: all clips).
+«Teilen» sends the single WAV. The player closes when a measurement starts or stops; playing
+while measuring works, but the speaker is then measured too (use headphones). A missing or broken
+file shows «Clip nicht gefunden».
 
 **Sending data for analysis:** «Als ZIP teilen» zips the clips, the manifest and the classifier
 logs (and the hour files only if they total < 500 MB) and opens the share menu; it shows the size
@@ -573,8 +594,8 @@ chart/ Android library: the history chart (drawing model, Compose Canvas) and th
 app/   Android: AudioRecord capture, foreground service, LiteRT YAMNet, Room, Compose UI
   src/main/     shared code (AudioTap.kt: the no-op hook the Labor recorder plugs into)
   src/public/   the published edition (AudioTapProvider → NoAudioTap, no extra UI)
-  src/labor/    Labor edition only: audio recorder, WAV/AAC writers, manifest, Labor UI, red icon
-  src/testLabor/ JVM tests of the Labor recorder parts
+  src/labor/    Labor edition only: audio recorder, WAV/AAC writers, manifest, clip player, Labor UI, red icon
+  src/testLabor/ JVM tests of the Labor recorder and clip-player parts
 tools/verify_yamnet.py    model I/O + Kotlin-vs-Python preprocessing check
 tools/csp_hash.py         CSP script hashes for the website's inline script (docs/update.html)
 ```

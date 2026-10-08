@@ -10,13 +10,18 @@ data class PlotRect(val left: Float, val top: Float, val right: Float, val botto
     fun contains(x: Float, y: Float): Boolean = x in left..right && y in top..bottom
 }
 
-/** An event dot in pixels. */
-data class Dot(val x: Float, val y: Float, val event: NoiseEvent, val highlighted: Boolean)
+/**
+ * An event dot in pixels. [clipRef] is set only if the event has an audio clip (Labor build); the
+ * dot then gets a small ring accent, its fill colour keeps the category meaning.
+ */
+data class Dot(val x: Float, val y: Float, val event: NoiseEvent, val highlighted: Boolean, val clipRef: String? = null) {
+    val hasClipAccent: Boolean get() = clipRef != null
+}
 
 /** What a tap selected (shown as crosshair + tooltip). */
 sealed interface Selection {
     data class Point(val point: SeriesPoint) : Selection
-    data class Event(val event: NoiseEvent, val highlighted: Boolean) : Selection
+    data class Event(val event: NoiseEvent, val highlighted: Boolean, val clipRef: String? = null) : Selection
     /** A time without valid data. */
     data class NoData(val timeMs: Long) : Selection
 }
@@ -66,8 +71,10 @@ class ChartGeometry(val model: ChartModel, val plot: PlotRect) {
     val gridY: List<Pair<Double, Float>> = model.yRange.gridlines().map { it to yOf(it) }
     val labelsX: List<Pair<String, Float>> = model.axisLabels.map { it.text to xOf(it.ms) }
 
-    val otherDots: List<Dot> = model.otherEvents.map { Dot(xOf(it.startEpochMs), yOf(it.lafMaxDb), it, false) }
-    val highlightDots: List<Dot> = model.highlightedEvents.map { Dot(xOf(it.startEpochMs), yOf(it.lafMaxDb), it, true) }
+    val otherDots: List<Dot> = model.otherEvents.map { Dot(xOf(it.startEpochMs), yOf(it.lafMaxDb), it, false, model.clipRefOf(it)) }
+    val highlightDots: List<Dot> = model.highlightedEvents.map { Dot(xOf(it.startEpochMs), yOf(it.lafMaxDb), it, true, model.clipRefOf(it)) }
+    /** Dots that get the clip accent (events with an audio clip; none in the public app). */
+    val clipAccentDots: List<Dot> get() = (otherDots + highlightDots).filter { it.hasClipAccent }
 
     /** Crosshair x of a selection. */
     fun selectionX(s: Selection): Float = when (s) {
@@ -88,7 +95,7 @@ class ChartGeometry(val model: ChartModel, val plot: PlotRect) {
             val dist = hypot(d.x - x, d.y - y)
             if (dist <= eventRadiusPx && dist < bestD) { best = d; bestD = dist }
         }
-        best?.let { return Selection.Event(it.event, it.highlighted) }
+        best?.let { return Selection.Event(it.event, it.highlighted, it.clipRef) }
         if (!plot.contains(x, y)) return null
         val t = timeAt(x)
         if (t > model.nowMs) return null
