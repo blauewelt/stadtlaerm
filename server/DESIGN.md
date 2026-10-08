@@ -56,9 +56,20 @@ e.g. `h26824_12473` for the hectare whose south-west corner is E 2 682 400, N 1 
 
 WGS84 ↔ LV95 uses swisstopo's published approximate formulas (accuracy ≈ 1 m, far below the
 100 m cell). The same pure function exists in Kotlin (`dsp` module, `geo/Lv95.kt`) and in
-JavaScript (`docs/map/lv95.js`), each unit-tested against swisstopo's reference points
-(e.g. Zimmerwald, Monte Generoso, Bern Münster) and against each other on a fixture of
-Zürich points.
+JavaScript (`docs/map/lv95.js`), each unit-tested against the reference points below and
+against each other on a fixture of Zürich points. No agent needs to look anything up:
+
+| Point | LV95 E | LV95 N | φ (ETRF93) | λ (ETRF93) | tolerance |
+|---|---|---|---|---|---|
+| swisstopo worked example | 2 700 000.00 | 1 100 000.00 | 46° 02′ 38.87″ | 8° 43′ 49.79″ | 1 m |
+| AGNES ZIMM (Zimmerwald) | 2 602 030.740 | 1 191 775.030 | 46° 52′ 37.540569″ | 7° 27′ 54.983511″ | 1 m |
+| AGNES ETH2 (ETH Zürich) | 2 680 910.112 | 1 251 259.201 | 47° 24′ 25.842486″ | 8° 30′ 38.194637″ | 1 m |
+| AGNES LOMO (Locarno Monti) | 2 704 160.863 | 1 114 349.376 | 46° 10′ 21.225556″ | 8° 47′ 14.732003″ | 1 m |
+| AGNES GENE (Genève) | 2 498 930.196 | 1 122 714.152 | 46° 14′ 53.692140″ | 6° 07′ 41.065513″ | 3 m |
+
+(AGNES is swisstopo's permanent GNSS station network; the published station coordinates are
+the reference. The approximate formulas were checked against all five on 2026-10-08: worst
+case 2.2 m at Genève, the rest under 0.5 m.)
 
 Cell → polygon for display: the four corners (E, N), (E+100, N), (E+100, N+100), (E, N+100)
 converted to WGS84; drawn as a quadrilateral (it is not quite a square in Web Mercator and
@@ -242,9 +253,22 @@ night: `{ "hour": "23", "laeq_db", "l90_db", "l10_db", "events": {…by category
   is bounded to the Zürich region anyway.
 - Cells drawn as filled quadrilaterals (section 3), coloured by the chosen metric:
   **night LAeq** (default), **dynamics**, **events per hour**, **Töff & Poser per hour**.
-  The LAeq scale is anchored on the Swiss Noise Abatement Ordinance night values so the
-  colours mean something: Planungswert 45 (ES II) · Immissionsgrenzwert 50/55 (ES II/III)
-  · Alarmwert 60/65. Legend bar with those ticks and the plain-English meaning of each.
+  The LAeq scale is anchored on the night values of the Swiss Noise Abatement Ordinance
+  (Lärmschutz-Verordnung, LSV, Anhang 3, road traffic; Lr in dB(A), night), so the colours
+  mean something. The table, so that nobody has to look it up:
+
+  | Empfindlichkeitsstufe | Planungswert | Immissionsgrenzwert | Alarmwert |
+  |---|---|---|---|
+  | ES I (recreation zones) | 40 | 45 | 60 |
+  | ES II (residential) | 45 | 50 | 65 |
+  | ES III (mixed residential/commercial) | 50 | 55 | 65 |
+  | ES IV (industrial) | 55 | 65 | 70 |
+
+  Legend ticks at 45 · 50 · 55 · 65 dB(A) with the plain-German meaning of each (Planungswert
+  ES II, Immissionsgrenzwert ES II, Immissionsgrenzwert ES III, Alarmwert ES II/III). The
+  legend must say, in one line, that the ordinance's values are *Beurteilungspegel Lr*
+  (a rated level with corrections, assessed over the whole year) while the map shows the
+  measured LAeq of single nights — the ticks are for orientation, not a legal finding.
 - Tap/hover card in the style of earth's pixel inspector: cell, devices, last night's
   numbers each with *when* it was measured, a small night chart (L90–L10 band, LAeq line,
   event dots with the chosen category in amber — the app's chart, redrawn in SVG), and the
