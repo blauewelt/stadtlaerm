@@ -1,4 +1,4 @@
-# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.3; v0.4.0 in development)
+# Stadtlärm — citizen noise measurement for Zürich (Android, v0.4.0)
 
 Stadtlärm turns an Android phone into a night-time noise logger. It measures A-weighted
 sound levels the way a sound level meter does (IEC 61672-1 A-weighting, Fast time weighting),
@@ -422,9 +422,13 @@ the website's `lv95.js`.
 - Settings changes (including the classifier level adjustment) apply from the next start of a measurement.
 - Calibration must be done with the app in the foreground; leaving the app aborts the measurement.
 
-## Status of v0.3.3
+## Status of v0.4.0
 
-v0.3.3 is a public **test version**: v0.3.2 plus a clearer measurement notification («Mikrofon
+v0.4.0 is a public **test version**: v0.3.4 (no functional change from v0.3.3 in the public app)
+plus the opt-in [«Messwerte teilen»](#messwerte-teilen-opt-in-upload-v040), off by default. The
+upload client is unit-tested on the JVM, including a round trip against the real server
+(`RealServerTest`); the APK was built and signed with the Android SDK (platform 35, build-tools
+34.0.0), but v0.4.0 has not yet been run on a device. v0.3.3: v0.3.2 plus a clearer measurement notification («Mikrofon
 aktiv – Messung läuft», visible in the status bar) and the setting «Messung beenden, wenn die App
 geschlossen wird»; the code was split into two product flavours (`public` and the unpublished
 [Labor build](#labor-build)) without any change to the measurement. v0.3.2: v0.3.1 (chart, event
@@ -447,7 +451,7 @@ and the update check have not been tried on a phone yet.
 
 ## Labor build
 
-«Stadtlärm Labor» (`ch.stadtlaerm.labor`, version name `0.3.4-labor`) is a separate app built
+«Stadtlärm Labor» (`ch.stadtlaerm.labor`, version name `0.4.0-labor`) is a separate app built
 from the same code that can **record audio**, to debug the event detector and the sound-source
 classifier with real sound — e.g. why highway passes of cars and motorbikes (3–10 s, ≈ 13 dB above
 a quiet background) are not recognised: each clip comes with the classifier's per-second results
@@ -667,8 +671,8 @@ tools/csp_hash.py         CSP script hashes for the website's inline script (doc
 - **ESP32 sensor:** a fixed outdoor sensor (ESP32-S3 + MEMS microphone) running the same DSP
   (the `dsp` module is written to port 1:1 to C/C++ or Kotlin/Native) and the same calibration
   procedure, so phone and sensor data are comparable. See [firmware/](../firmware/README.md).
-- Opt-in data sharing for a city-wide map: in development for v0.4.0 («Messwerte teilen», see
-  above; server and map in [../server/](../server/DESIGN.md)). A map picker for the placement step.
+- Opt-in data sharing for a city-wide map: shipped in v0.4.0 («Messwerte teilen», see
+  above; server and map in [../server/](../server/DESIGN.md)). Still open: a map picker for the placement step.
 - Slow time weighting, Lnight/Lden reporting per ISO 1996; zoom and export of the chart.
 
 ## Third-party components

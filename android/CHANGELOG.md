@@ -1,8 +1,13 @@
 # Changelog
 
-## 0.4.0-dev — unreleased
+## 0.4.0 — 2026-10-09
 
-### Public app (`ch.stadtlaerm.app`, version 0.4.0-dev, code 9; not published)
+### Public app (`ch.stadtlaerm.app`, version 0.4.0, code 10; published on stadtlaerm.ch)
+
+In short: an opt-in «Messwerte teilen» sends the measured levels to the shared noise map — off by
+default; the `INTERNET` permission is added for exactly this. The location is placed on the phone
+to a 100 m × 100 m hectare square; «Meine Daten auf dem Server löschen» deletes everything sent;
+«Neue Kennung» starts over with a new device id. Nothing in the measurement changed.
 
 - **«Messwerte teilen» (opt-in upload for the shared noise map).** New screen
   Einstellungen → Messwerte teilen (server/DESIGN.md §2, §4, §9): an explanation of what is sent,
@@ -23,7 +28,7 @@
 - Nothing in the measurement path changed. The database schema is unchanged (three read-only
   queries added).
 
-### «Stadtlärm Labor» (`0.4.0-dev-labor`)
+### «Stadtlärm Labor» (`ch.stadtlaerm.labor`, `0.4.0-labor`, never published)
 
 - No functional change: no network permission (its manifest removes `INTERNET` and
   `ACCESS_NETWORK_STATE`), «Messwerte teilen» is not offered.
