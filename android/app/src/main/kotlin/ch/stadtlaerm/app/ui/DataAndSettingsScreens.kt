@@ -251,11 +251,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             Slider(
                 value = s.windFlutterMinDb.toFloat(),
                 valueRange = AppSettings.WIND_FLUTTER_MIN.toFloat()..AppSettings.WIND_FLUTTER_MAX.toFloat(),
-                steps = Math.round((AppSettings.WIND_FLUTTER_MAX - AppSettings.WIND_FLUTTER_MIN) * 5).toInt() - 1, // 0.2 dB
-                onValueChange = { v -> c.settings.update { it.copy(windFlutterMinDb = Math.round(v * 5) / 5.0) } },
+                steps = Math.round((AppSettings.WIND_FLUTTER_MAX - AppSettings.WIND_FLUTTER_MIN) * 10).toInt() - 1, // 0.1 dB
+                onValueChange = { v -> c.settings.update { it.copy(windFlutterMinDb = Math.round(v * 10) / 10.0) } },
             )
             Text(
-                "Standard 95 % bzw. 3.8 dB (aus einer Nacht mit 528 Ereignissen). Flattern: wie stark der Pegel unter 200 Hz " +
+                "Standard 93 % bzw. 4.5 dB (an einer aufgenommenen Nacht mit 528 Ereignissen abgeglichen). Flattern: wie stark der Pegel unter 200 Hz " +
                     "innerhalb des Ereignisses schnell hin und her schwankt.",
                 style = MaterialTheme.typography.bodySmall,
             )

@@ -195,17 +195,19 @@ class DetectorV2Test {
         assertTrue(turb.lfFlutterDb in 3.8..8.0, "turbulence ${turb.lfFlutterDb}")
         // LF-dominated energy is wind too.
         assertTrue(tracker(levels, low = { 9.6 }, total = { 10.0 }).compute(40, 56, 60, 40.0, 55.0, 2.0, WindRule()).wind)
-        assertFalse(tracker(levels, low = { 9.4 }, total = { 10.0 }).compute(40, 56, 60, 40.0, 55.0, 2.0, WindRule()).wind)
+        assertFalse(tracker(levels, low = { 9.2 }, total = { 10.0 }).compute(40, 56, 60, 40.0, 55.0, 2.0, WindRule()).wind)
         // Thresholds are settings.
-        assertTrue(tracker(levels, low = { 9.4 }, total = { 10.0 }).compute(40, 56, 60, 40.0, 55.0, 2.0, WindRule(0.9, 3.8)).wind)
+        assertTrue(tracker(levels, low = { 9.2 }, total = { 10.0 }).compute(40, 56, 60, 40.0, 55.0, 2.0, WindRule(0.9, 3.8)).wind)
     }
 
     @Test
     fun windRuleAndShapeThresholds() {
         val w = WindRule()
-        assertTrue(w.isWind(0.95, 0.0))
-        assertTrue(w.isWind(0.5, 3.8))
-        assertFalse(w.isWind(0.949, 3.79))
+        assertEquals(0.93, WindRule.DEFAULT_LF_SHARE) // fitted on the recorded night (see WindRule)
+        assertEquals(4.5, WindRule.DEFAULT_FLUTTER_DB)
+        assertTrue(w.isWind(0.93, 0.0))
+        assertTrue(w.isWind(0.5, 4.5))
+        assertFalse(w.isWind(0.929, 4.49))
         assertFalse(w.isWind(Double.NaN, Double.NaN))
         assertEquals(EventShape.LONG, EventShape.classify(30.0, 0.1, 1.0))
         assertEquals(EventShape.IMPULSE, EventShape.classify(1.0, 0.2, 1.0))

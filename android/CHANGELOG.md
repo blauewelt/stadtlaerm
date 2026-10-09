@@ -21,7 +21,8 @@ and the constant highway hum was mixed into the event figures.
   low-frequency flutter (definitions in README → Event detection). Computed with five 2nd-order
   Butterworth sections per sample and per-tick sums (no FFT, no allocation per sample). For the
   decay the level is followed up to 5 s past the end; events are reported after that.
-- **Wind flag:** `lf_share ≥ 0.95` or `lf_flutter_db ≥ 3.8` (both under «Experten»). Wind events are
+- **Wind flag:** `lf_share ≥ 0.93` or `lf_flutter_db ≥ 4.5` (both under «Experten»; fitted on the
+  recorded night, see Validation). Wind events are
   stored with category «Wind» (`wind`) and exported, but excluded from events/h, `event_count`, the
   category counts and highlights, the loudest event and the night's events. The chart draws them as
   small hollow grey dots («Wind (ausgeschlossen)», can be hidden).
@@ -53,11 +54,21 @@ and the constant highway hum was mixed into the event figures.
   `session_start` (`eventExcessDb`, `localFloorWindowS`, wind thresholds instead of
   `eventThresholdDb`). Clips are cut back to end + 5 s when the end is reported late.
 
+### Validation (one recorded night, Labor build)
+
+- The night's continuous recording (8.7 h) replayed through the engine and matched to the 528
+  weakly labelled clips: at excess 6.5 dB / floor 30 dB(A) 64 % of the vehicle passes are kept and
+  84 % of the "background" events dropped (floor 20: 80 % / 72 %); 5 dB keeps the background too,
+  8 dB loses half of the passes. Wind thresholds fitted to the labels: 0.93 / 4.5 dB (97.4 %
+  agreement on 340 events; first guess 0.95 / 3.8 dB: 96.2 %). Details: README → Event detection.
+
 ### Development
 
 - Offline replay harness (`dsp/src/test/.../Replay.kt`): WAV (16 kHz upsampled ×3 polyphase, or
   48 kHz) → engine → events/minutes CSV; three synthetic fixtures (smooth hump, LF wind thump,
-  steady tone) with expected outputs; `./gradlew :dsp:replay --args="clip.wav"` for real clips.
+  steady tone) with expected outputs; `./gradlew :dsp:replay --args="clip.wav"` for real clips,
+  `:dsp:replayBatch` for all clips of a Labor manifest and `:dsp:replayNight` for a whole night's
+  continuous recording (one CSV each; the audio stays outside the repository).
 
 ## 0.3.4 — 2026-10-08
 

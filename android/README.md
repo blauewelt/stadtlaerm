@@ -104,7 +104,7 @@ sample, no FFT, no audio kept; code: `dsp/.../EventFeatures.kt`):
 | `mid_band_rise_db` | A-weighted level in 250 Hz–4.5 kHz (2nd-order Butterworth high-pass and low-pass) over the loudest 1 s of the event minus the same band over the 5 s before its start |
 | `lf_share` | unweighted energy 20–200 Hz / energy 20 Hz–8 kHz over the event (20 Hz high-pass, then a 200 Hz resp. 8 kHz low-pass, 2nd-order Butterworth) |
 | `lf_flutter_db` | RMS of the detrended 20–200 Hz level: the un-time-weighted 125 ms level of that band minus its centred running median over ±8 ticks (≈ 2.1 s; the window shrinks symmetrically towards the event's edges). The median follows slow trends and single steps (any on/offset), so what remains is the fast back-and-forth (≈ 0.5 Hz up to the 4 Hz the tick rate allows) of wind turbulence |
-| `wind` | `lf_share ≥ 0.95` **or** `lf_flutter_db ≥ 3.8` (thresholds under Einstellungen → Experten) |
+| `wind` | `lf_share ≥ 0.93` **or** `lf_flutter_db ≥ 4.5` (thresholds under Einstellungen → Experten; fitted on a recorded night, see below) |
 | `shape` | `long` (≥ 30 s), else `impulse` (rise < 0.35 s and ≤ 2 s), else `jagged` (jaggedness ≥ 0.3), else `hump`. Informational only, not a filter; thresholds provisional |
 
 **Wind on the microphone.** In the recorded night 14 % of the events were wind: almost all their
@@ -114,6 +114,20 @@ multi-peak gusts, in episodes. A high-pass does not remove it. Wind events are s
 with `wind = true`, but are left out of every count: events/h, the night's events, the categories,
 the loudest event, `event_count`. The chart draws them as small hollow grey dots («Wind
 (ausgeschlossen)»; can be hidden under Experten).
+
+**Validation on a recorded night** (Labor build, 7./8.10.2026, one phone, uncalibrated; audio not in
+the repository). The whole continuous recording (8.7 h) was replayed through the engine
+(`./gradlew :dsp:replayNight`, see Status) and its events matched to the 528 Labor clips, which
+carry weak labels from an offline analysis. With the defaults (excess 6.5 dB, floor 30 dB(A)) the
+detector keeps 64 % of the labelled vehicle passes and drops 84 % of the "background" events
+(nothing but a weak swell); with the event floor at 20 dB(A) — this phone's quiet night sat at
+≈ 15–25 dB(A) uncalibrated — 80 % and 72 %. Excess 5 dB kept almost everything including the
+background, 8 dB lost half of the passes; 6.5 dB was the best compromise of the three. The wind
+thresholds were fitted on the same night: `lf_share ≥ 0.93 or lf_flutter_db ≥ 4.5` agrees with the
+wind labels on 97.4 % of the 340 matched events (5 false, 4 missed); the first guess 0.95 / 3.8 dB
+gave 96.2 % (5 false, 8 missed). `lf_share` matches the offline analysis closely (r = 0.95); this
+app's flutter reads ≈ 0.6× the offline 0.5–5 Hz band-pass value (r = 0.66), so thresholds of the
+two are not interchangeable. One night, one window, one phone: treat all of it as provisional.
 
 ## Chart
 
@@ -446,7 +460,14 @@ the migration against SQLite, an offline replay of three synthetic WAV fixtures 
 (`dsp/src/test/.../ReplayTest.kt`; `./gradlew :dsp:replay --args="clip.wav"` replays any 16 or
 48 kHz mono WAV, e.g. Labor clips, and prints events and minutes as CSV — note that the local floor
 needs 5 s of history, so for the Labor clips' 5 s pre-roll use `--min-history 3`) and Paparazzi
-renders. Not yet checked: the thresholds on real nights other than the one they were derived from,
+renders, and the replay of one real night (see "Validation on a recorded night"). For such data:
+`./gradlew :dsp:replayBatch --args="--manifest manifest.jsonl --clips clips/ --out v2.csv [--excess 6.5,5,8]
+[--floor 30,20] [--min-history 3]"` replays every Labor clip and writes, per clip, the v2 event that
+overlaps the manifest's event; `./gradlew :dsp:replayNight --args="--manifest manifest.jsonl --wavs dir
+--session <id> --out prefix"` replays a session's continuous hour files (decoded to 16 kHz WAVs with
+ffmpeg first) with the real 30 s history — clips alone have only 5 s of pre-roll, during which a
+slow pass is often already rising, so the clip replay underestimates detection. Not yet checked:
+the thresholds on real nights other than the one they were derived from,
 the CPU cost of the extra filters on a phone, the settings screen and the one-time migration
 notice on a device.
 

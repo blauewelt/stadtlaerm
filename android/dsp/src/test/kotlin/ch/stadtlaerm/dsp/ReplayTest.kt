@@ -91,7 +91,7 @@ class ReplayTest {
         assertTrue(f.jaggedness < 0.1, "jaggedness ${f.jaggedness}")
         assertTrue(f.midBandRiseDb >= 2.0, "mid band ${f.midBandRiseDb}")
         assertTrue(f.lfShare < 0.2, "lfShare ${f.lfShare}")
-        assertTrue(f.lfFlutterDb < 3.8, "flutter ${f.lfFlutterDb}")
+        assertTrue(f.lfFlutterDb < WindRule.DEFAULT_FLUTTER_DB, "flutter ${f.lfFlutterDb}")
         assertEquals(false, f.wind)
         assertEquals(null, ev.dominantCategory) // classifier off in the replay
         // Minute record: one burst, no wind, the local floor as hum.
@@ -109,7 +109,7 @@ class ReplayTest {
         val r = replay("wind_thump")
         val ev = r.events.single()
         val f = ev.features!!
-        assertTrue(f.lfShare >= 0.95, "lfShare ${f.lfShare}")
+        assertTrue(f.lfShare >= WindRule.DEFAULT_LF_SHARE, "lfShare ${f.lfShare}")
         assertEquals(true, f.wind)
         assertEquals(WindRule.CATEGORY, ev.dominantCategory)
         assertEquals(EventShape.IMPULSE, f.shape)

@@ -185,7 +185,15 @@ data class EventFeatures(
     val shape: String,
 )
 
-/** Wind on the microphone: `lfShare ≥ lfShareMin || lfFlutterDb ≥ flutterMinDb`. */
+/**
+ * Wind on the microphone: `lfShare ≥ lfShareMin || lfFlutterDb ≥ flutterMinDb`.
+ *
+ * Defaults fitted on the whole recorded night 7./8.10.2026 (continuous recording replayed through
+ * the engine, 340 detected events matched to the weakly labelled Labor clips, 81 of them wind):
+ * 0.93 / 4.5 dB agree with the labels on 97.4 % (5 false, 4 missed), the first guess 0.95 / 3.8 dB
+ * on 96.2 % (5 false, 8 missed); on the clips alone 96.9 % vs 95.1 %. This flutter estimator reads
+ * ≈ 0.6× the offline analysis's 0.5–5 Hz band-pass flutter (r = 0.66), so its 3.8 dB did not carry over.
+ */
 data class WindRule(
     val lfShareMin: Double = DEFAULT_LF_SHARE,
     val flutterMinDb: Double = DEFAULT_FLUTTER_DB,
@@ -194,8 +202,8 @@ data class WindRule(
     fun isWind(lfShare: Double, lfFlutterDb: Double): Boolean = lfShare >= lfShareMin || lfFlutterDb >= flutterMinDb
 
     companion object {
-        const val DEFAULT_LF_SHARE = 0.95
-        const val DEFAULT_FLUTTER_DB = 3.8
+        const val DEFAULT_LF_SHARE = 0.93
+        const val DEFAULT_FLUTTER_DB = 4.5
         /** Category id of wind events (not part of the classifier mapping). */
         const val CATEGORY = "wind"
         const val NAME_DE = "Wind"

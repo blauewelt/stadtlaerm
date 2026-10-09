@@ -360,8 +360,8 @@ class AppJvmTest {
         assertEquals(SettingsMigration.Result(6.5, null), SettingsMigration.migrate(null)) // fresh install
         assertEquals(6.5, AppSettings().eventExcessDb)
         assertEquals(30, AppSettings().localFloorWindowSeconds)
-        assertEquals(0.95, AppSettings().windLfShareMin)
-        assertEquals(3.8, AppSettings().windFlutterMinDb)
+        assertEquals(0.93, AppSettings().windLfShareMin)
+        assertEquals(4.5, AppSettings().windFlutterMinDb)
         assertTrue(AppSettings().showWindEvents)
     }
 

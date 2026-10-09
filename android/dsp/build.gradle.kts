@@ -45,3 +45,27 @@ tasks.register<JavaExec>("replay") {
     mainClass.set("ch.stadtlaerm.dsp.ReplayMain")
     workingDir = gradle.startParameter.currentDir
 }
+
+// Batch replay of Labor clips (manifest + clips directory → one CSV; audio stays where it is):
+//   ./gradlew :dsp:replayBatch --args="--manifest m.jsonl --clips dir --out v2.csv [--excess 6.5,5,8] [--floor 30,20]"
+tasks.register<JavaExec>("replayBatch") {
+    group = "verification"
+    description = "Replays all clips of a Labor manifest and writes the detector-v2 result per clip as CSV"
+    dependsOn("testClasses")
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("ch.stadtlaerm.dsp.ReplayBatch")
+    workingDir = gradle.startParameter.currentDir
+    maxHeapSize = "4g"
+}
+
+// Whole-night replay of the Labor continuous recording (decoded to 16 kHz WAVs beforehand):
+//   ./gradlew :dsp:replayNight --args="--manifest m.jsonl --wavs dir --session S --out /tmp/night [--excess …] [--floor …]"
+tasks.register<JavaExec>("replayNight") {
+    group = "verification"
+    description = "Replays a Labor session's continuous recording through the engine and matches the events to the manifest's clips"
+    dependsOn("testClasses")
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("ch.stadtlaerm.dsp.ReplayNight")
+    workingDir = gradle.startParameter.currentDir
+    maxHeapSize = "3g"
+}
