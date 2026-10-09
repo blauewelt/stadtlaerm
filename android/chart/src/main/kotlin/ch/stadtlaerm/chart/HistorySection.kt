@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -74,10 +76,12 @@ fun HistorySection(
     actions: HistoryActions,
     modifier: Modifier = Modifier,
     onPlayClip: ((clipRef: String) -> Unit)? = null,
+    /** Setting «Wind-Ereignisse in der Grafik zeigen» (they are never counted). */
+    showWindEvents: Boolean = true,
 ) {
     val windows = remember(zone) { Windows(zone) }
-    val model = remember(data, highlight, eventFloorDb, zone) {
-        data?.let { ChartModel.build(it, zone, highlight, eventFloorDb) }
+    val model = remember(data, highlight, eventFloorDb, zone, showWindEvents) {
+        data?.let { ChartModel.build(it, zone, highlight, eventFloorDb, showWindEvents) }
     }
     val loading = data == null || data.window != window
     val scheme = MaterialTheme.colorScheme
@@ -166,6 +170,9 @@ fun HistorySection(
                     }
                     LegendItem(Swatch.Line(palette.series1), if (window.mode == RangeMode.WEEK) "LAeq pro Stunde" else "LAeq pro Minute")
                     LegendItem(Swatch.Band(palette.series1.copy(alpha = palette.bandAlpha).compositeOver(cardColor)), "Hintergrund L90–L10")
+                    if (model != null && model.windEvents.isNotEmpty()) {
+                        LegendItem(Swatch.Hollow(scheme.onSurfaceVariant.copy(alpha = 0.55f).compositeOver(cardColor)), WIND_LEGEND)
+                    }
                     if (onPlayClip != null && model != null && model.clipRefs.isNotEmpty()) {
                         LegendItem(Swatch.Ring(scheme.onSurface.copy(alpha = 0.85f)), "mit Clip (antippen › $PLAY_CLIP_LABEL)")
                     }
@@ -192,9 +199,17 @@ fun HistorySection(
 
         // 3. Summary.
         val s = model?.summary
-        Row(Modifier.fillMaxWidth().padding(horizontal = margin), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile("LAeq", s?.let { "${ChartFmt.db(it.laeqDb)} dB(A)" } ?: "–", if (s?.anyUncalibrated == true) "unkalibriert" else null, Modifier.weight(1f))
-            StatTile("Ereignisse", s?.eventCount?.toString() ?: "–", s?.let { "${it.highlightCount} $highlightName" }, Modifier.weight(1f))
+        // Equal-height tiles; labels and notes may wrap to two lines on narrow phones.
+        Row(
+            Modifier.fillMaxWidth().height(IntrinsicSize.Max).padding(horizontal = margin),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // The hum (steady background) and the bursts above it are separate quantities.
+            StatTile(
+                "Hintergrund (L90)", s?.let { "${ChartFmt.db(it.humDb)} dB(A)" } ?: "–",
+                if (s?.anyUncalibrated == true) "unkalibriert" else null, Modifier.weight(1f),
+            )
+            StatTile("Ereignisse", s?.eventsPerHourText ?: "–", s?.let { "${it.windCount} Wind ausgeschlossen" }, Modifier.weight(1f))
             val loud = s?.loudest
             StatTile(
                 "Lautestes", loud?.let { "${ChartFmt.db(it.lafMaxDb)} dB(A)" } ?: "–",
@@ -203,7 +218,7 @@ fun HistorySection(
         }
         if (s != null && model?.isEmpty == false) {
             Text(
-                s.line(), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
+                s.line(highlightName = highlightName), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = margin),
             )
             // Own line: appended to the summary line it could wrap with a leading «·».
@@ -234,6 +249,7 @@ private sealed interface Swatch {
     data class Line(val color: Color) : Swatch
     data class Band(val color: Color) : Swatch
     data class Ring(val color: Color) : Swatch
+    data class Hollow(val color: Color) : Swatch
 }
 
 @Composable
@@ -244,6 +260,10 @@ private fun LegendItem(swatch: Swatch, text: String) {
                 is Swatch.Dot -> drawCircle(swatch.color, if (swatch.small) size.height / 3 else size.height / 2, Offset(size.width / 2, size.height / 2))
                 is Swatch.Line -> drawLine(swatch.color, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 2.dp.toPx(), StrokeCap.Round)
                 is Swatch.Band -> drawRect(swatch.color)
+                is Swatch.Hollow -> drawCircle(
+                    swatch.color, size.height / 3, Offset(size.width / 2, size.height / 2),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(1.25.dp.toPx()),
+                )
                 is Swatch.Ring -> drawCircle(
                     swatch.color, size.height / 2 - 1.dp.toPx(), Offset(size.width / 2, size.height / 2),
                     style = androidx.compose.ui.graphics.drawscope.Stroke(1.25.dp.toPx()),
@@ -257,15 +277,18 @@ private fun LegendItem(swatch: Swatch, text: String) {
 @Composable
 private fun StatTile(label: String, value: String, sub: String?, modifier: Modifier = Modifier) {
     Card(
-        modifier = modifier,
+        modifier = modifier.fillMaxHeight(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)),
     ) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(
+                label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
             Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 sub ?: " ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
     }

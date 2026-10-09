@@ -1,0 +1,2 @@
+start,duration_s,valid_s,coverage,laeq_db,lafmax_db,lafmin_db,l1_db,l10_db,l50_db,l90_db,event_count,dominant_category,classifier_frames,calibration_id,calibration_offset_db,audio_source,calibrated,clock_corrections,orig_laeq_db,orig_lafmax_db,orig_lafmin_db,orig_l1_db,orig_l10_db,orig_l50_db,orig_l90_db,recalibrated_from_id,recalibration_offset_db,local_floor_db,wind_event_count
+2026-10-02T23:00:00+02:00,14.5,14.5,1.000,48.4,54.5,41.8,54.3,53.6,42.0,41.9,1,,0,,112.35,unknown,false,0,,,,,,,,,,41.9,0

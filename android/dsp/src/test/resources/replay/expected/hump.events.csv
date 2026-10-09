@@ -1,0 +1,2 @@
+start,duration_s,lafmax_db,sel_db,background_db,threshold_db,min_level_db,dominant_category,dominant_score,label1,score1,label2,score2,label3,score3,classifier_frames,calibration_id,audio_source,calibrated,orig_lafmax_db,orig_sel_db,orig_background_db,recalibrated_from_id,recalibration_offset_db,local_floor_db,excess_db,rise_s,decay_s,jaggedness,mid_band_rise_db,lf_share,lf_flutter_db,wind,shape
+2026-10-02T23:00:07.000+02:00,4.625,54.5,59.1,41.8,6.5,30.0,,0.000,,,,,,,0,,unknown,false,,,,,,41.8,12.7,1.748,1.820,0.014,12.5,0.008,0.39,false,hump

@@ -1,5 +1,6 @@
 package ch.stadtlaerm.app.labor
 
+import ch.stadtlaerm.dsp.EventFeatures
 import ch.stadtlaerm.dsp.Iso
 import ch.stadtlaerm.dsp.NoiseEvent
 import ch.stadtlaerm.dsp.classify.ClassifierResult
@@ -87,8 +88,11 @@ object ManifestLines {
         val calibrationId: Long?,
         val calibrationOffsetDb: Double,
         val calibrated: Boolean,
-        val eventThresholdDb: Double,
+        val eventExcessDb: Double,
+        val localFloorWindowSeconds: Double,
         val eventMinLevelDb: Double,
+        val windLfShareMin: Double,
+        val windFlutterMinDb: Double,
         val classifierEnabled: Boolean,
         val classifierNormalize: Boolean,
         val classifierIntervalSeconds: Double,
@@ -106,7 +110,10 @@ object ManifestLines {
             .put("app", i.appVersion).put("appCode", i.appVersionCode)
             .put("audioSource", i.audioSource).put("encoding", i.encoding).putStrings("effects", i.effects)
             .put("calibrationId", i.calibrationId).put("calibrationOffsetDb", i.calibrationOffsetDb).put("calibrated", i.calibrated)
-            .put("eventThresholdDb", i.eventThresholdDb).put("eventFloorDb", i.eventMinLevelDb)
+            // Detector v2 (0.4.0): start at local floor + excess; wind rule thresholds.
+            .put("detector", "v2").put("eventExcessDb", i.eventExcessDb).put("localFloorWindowS", i.localFloorWindowSeconds)
+            .put("eventFloorDb", i.eventMinLevelDb)
+            .put("windLfShareMin", i.windLfShareMin).put("windFlutterMinDb", i.windFlutterMinDb)
             .put("classifier", i.classifierEnabled).put("classifierLevelAdjustment", i.classifierNormalize)
             .put("classifierIntervalS", i.classifierIntervalSeconds)
             .put("inputSampleRate", INPUT_RATE)
@@ -167,6 +174,7 @@ object ManifestLines {
                 .put("lafMaxDb", event.lafMaxDb).put("selDb", event.selDb).put("backgroundDb", event.backgroundDb)
                 .put("category", event.dominantCategory).put("categoryScore", event.dominantScore.toDouble())
                 .putObjects("top3", event.topLabels.take(3).map { Json().put("label", it.label).put("score", it.score.toDouble()) })
+            event.features?.let { j.putRaw("features", features(it).build()) }
         } else {
             j.put("eventStart", null as String?).put("eventEnd", null as String?)
         }
@@ -181,6 +189,34 @@ object ManifestLines {
             .putObjects("classifierTrace", trace.map { classifierResult(it, zone, clip.clipStartSample) })
             .build()
     }
+
+    /**
+     * The detector-v2 numbers of an event (since 0.4.0): local floor (dB(A)), excess (dB), rise and
+     * decay (s, null if not measurable), jaggedness, mid-band rise (dB), LF share (0…1), LF flutter
+     * (dB), the wind flag and the shape (hump, jagged, impulse, long). Definitions: android/README.md.
+     */
+    fun features(f: EventFeatures): Json = Json()
+        .put("localFloorDb", f.localFloorDb, 2).put("excessDb", f.excessDb, 2)
+        .put("riseS", f.riseS, 3).put("decayS", f.decayS, 3).put("jaggedness", f.jaggedness, 4)
+        .put("midBandRiseDb", f.midBandRiseDb, 2).put("lfShare", f.lfShare, 4).put("lfFlutterDb", f.lfFlutterDb, 2)
+        .put("wind", f.wind).put("shape", f.shape)
+
+    /**
+     * Every event (also those without a clip, since 0.4.0) when it is complete: input sample span,
+     * start/end time and [features]. Written from `AudioTap.onEventEnded`, before the event is
+     * stored, so it carries no database id; match it to `clip` lines by `eventStartSample`.
+     */
+    fun event(
+        session: String, nowMs: Long, zone: ZoneId, startSample: Long, endSample: Long, startEpochMs: Long, endEpochMs: Long,
+        f: EventFeatures,
+    ): String =
+        base("event", session, nowMs, zone)
+            .put("eventStart", Iso.format(startEpochMs, zone, millis = true))
+            .put("eventEnd", Iso.format(endEpochMs, zone, millis = true))
+            .put("durationS", (endSample - startSample).toDouble() / INPUT_RATE)
+            .put("eventStartSample", startSample).put("eventEndSample", endSample)
+            .putRaw("features", features(f).build())
+            .build()
 
     /**
      * A continuous file was opened. Its 16 kHz sample j (= AAC presentation time j/16000 s)

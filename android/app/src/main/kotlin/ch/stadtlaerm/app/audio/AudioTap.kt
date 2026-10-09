@@ -1,5 +1,6 @@
 package ch.stadtlaerm.app.audio
 
+import ch.stadtlaerm.dsp.EventFeatures
 import ch.stadtlaerm.dsp.NoiseEvent
 import ch.stadtlaerm.dsp.classify.ClassifierResult
 
@@ -26,7 +27,12 @@ interface AudioTap {
     fun onEventStarted(startSample: Long)
     fun onEventConfirmed(startSample: Long)
     fun onEventDiscarded(startSample: Long)
-    fun onEventEnded(startSample: Long, endSample: Long)
+    /**
+     * The event [startSample, endSample) is complete, with its detector-v2 [features] (local floor,
+     * excess, rise/decay, jaggedness, mid-band rise, LF share/flutter, wind, shape). Called after
+     * the event's tail, i.e. up to 5 s after [endSample] (numbers only, no audio).
+     */
+    fun onEventEnded(startSample: Long, endSample: Long, features: EventFeatures)
     /**
      * One classifier run (top-5 labels and scores, category decision, input gain, LAF), at
      * [wallClockMs] = the engine's time of the window end. Numbers and label names only.
@@ -49,9 +55,13 @@ data class AudioTapSession(
     val calibrationId: Long?,
     val calibrationOffsetDb: Double,
     val calibrated: Boolean,
-    /** Event detection: threshold above the background and the absolute floor (dB). */
-    val eventThresholdDb: Double,
+    /** Event detection: excess over the local floor, its window, and the absolute floor (dB, s). */
+    val eventExcessDb: Double,
+    val localFloorWindowSeconds: Double,
     val eventMinLevelDb: Double,
+    /** Wind rule: LF energy share and LF flutter thresholds. */
+    val windLfShareMin: Double,
+    val windFlutterMinDb: Double,
     val classifierEnabled: Boolean,
     val classifierNormalize: Boolean,
     val classifierIntervalSeconds: Double,
@@ -66,7 +76,7 @@ object NoAudioTap : AudioTap {
     override fun onEventStarted(startSample: Long) {}
     override fun onEventConfirmed(startSample: Long) {}
     override fun onEventDiscarded(startSample: Long) {}
-    override fun onEventEnded(startSample: Long, endSample: Long) {}
+    override fun onEventEnded(startSample: Long, endSample: Long, features: EventFeatures) {}
     override fun onClassifierResult(wallClockMs: Long, result: ClassifierResult) {}
     override fun onEventStored(eventId: Long, event: NoiseEvent, startSample: Long, endSample: Long) {}
     override fun onSessionStop() {}

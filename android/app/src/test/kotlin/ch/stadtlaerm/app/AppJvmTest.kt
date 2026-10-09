@@ -1,6 +1,11 @@
 package ch.stadtlaerm.app
 
 import ch.stadtlaerm.app.data.AppSettings
+import ch.stadtlaerm.app.data.Mappers
+import ch.stadtlaerm.app.data.SettingsMigration
+import ch.stadtlaerm.dsp.EventFeatures
+import ch.stadtlaerm.dsp.EventShape
+import ch.stadtlaerm.dsp.WindRule
 import ch.stadtlaerm.app.data.EventEntity
 import ch.stadtlaerm.app.data.MinuteEntity
 import ch.stadtlaerm.app.data.MigrationSql
@@ -92,6 +97,9 @@ class AppJvmTest {
         // v3 left `minutes` unchanged; v4 only appends columns.
         assertTrue(MigrationSql.CREATE_MINUTES_V4.startsWith(MigrationSql.CREATE_MINUTES_V2.removeSuffix(")") + ", "))
         assertTrue(MigrationSql.CREATE_EVENTS_V4.startsWith(MigrationSql.CREATE_EVENTS_V3.removeSuffix(")") + ", "))
+        // v5 only appends columns too.
+        assertTrue(MigrationSql.CREATE_MINUTES_V5.startsWith(MigrationSql.CREATE_MINUTES_V4.removeSuffix(")") + ", "))
+        assertTrue(MigrationSql.CREATE_EVENTS_V5.startsWith(MigrationSql.CREATE_EVENTS_V4.removeSuffix(")") + ", "))
     }
 
     @Test
@@ -149,11 +157,12 @@ class AppJvmTest {
             "`audioSource` TEXT NOT NULL, `calibrated` INTEGER NOT NULL)"
 
     @Test
-    fun v4CreateStatementsMatchRoomGeneratedSchema() {
+    fun v5CreateStatementsMatchRoomGeneratedSchema() {
         val dir = File(System.getProperty("stadtlaerm.generatedDb"))
         val impl = File(dir, "AppDatabase_Impl.kt").readText()
-        assertTrue(impl.contains(MigrationSql.CREATE_MINUTES_V4), "Room schema changed: update MigrationSql")
-        assertTrue(impl.contains(MigrationSql.CREATE_EVENTS_V4), "Room schema changed: update MigrationSql")
+        assertTrue(impl.contains(MigrationSql.CREATE_MINUTES_V5), "Room schema changed: update MigrationSql")
+        assertTrue(impl.contains(MigrationSql.CREATE_EVENTS_V5), "Room schema changed: update MigrationSql")
+        assertTrue(impl.contains("RoomOpenHelper.Delegate(5)"), "Room schema version is not 5")
         assertTrue(impl.contains("CREATE INDEX IF NOT EXISTS `index_minutes_startEpochMs` ON `minutes` (`startEpochMs`)"))
         assertTrue(impl.contains("CREATE INDEX IF NOT EXISTS `index_events_startEpochMs` ON `events` (`startEpochMs`)"))
     }
@@ -264,6 +273,96 @@ class AppJvmTest {
                 }
             }
         }
+    }
+
+    // ---- Database migration v4 → v5 (detector v2) -----------------------------------------------
+
+    @Test
+    fun migration4to5AddsFeatureColumnsWithDefaultsAndKeepsData() {
+        DriverManager.getConnection("jdbc:sqlite::memory:").use { c ->
+            c.createStatement().use { st ->
+                st.execute(MigrationSql.CREATE_MINUTES_V4)
+                st.execute("CREATE INDEX IF NOT EXISTS `index_minutes_startEpochMs` ON `minutes` (`startEpochMs`)")
+                st.execute(MigrationSql.CREATE_EVENTS_V4)
+                st.execute("CREATE INDEX IF NOT EXISTS `index_events_startEpochMs` ON `events` (`startEpochMs`)")
+                st.execute(
+                    "INSERT INTO minutes (startEpochMs, startIso, durationSeconds, laeqDb, lafMaxDb, lafMinDb, l1Db, l10Db, l50Db, " +
+                        "l90Db, eventCount, dominantCategory, categorySharesJson, classifierFrames, calibrationId, " +
+                        "calibrationOffsetDb, audioSource, calibrated, validSeconds, coverage, clockCorrections, orig_laeq_db) VALUES " +
+                        "(1, 'a', 60, 52.5, 70, 40, 65, 58, 50, 45, 2, 'road_traffic', '{}', 60, NULL, 112.35, 'UNPROCESSED', 0, 60, 1, 0, 50.0)"
+                )
+                st.execute(
+                    "INSERT INTO events (startEpochMs, startIso, durationSeconds, lafMaxDb, selDb, backgroundDb, thresholdDb, " +
+                        "dominantCategory, dominantScore, topLabelsJson, classifierFrames, calibrationId, audioSource, calibrated, min_level_db) " +
+                        "VALUES (1, 'a', 2.25, 45.1, 45.4, 21.8, 10.0, 'unclassified', 0.063, '[]', 2, NULL, 'UNPROCESSED', 0, 30.0)"
+                )
+                MigrationSql.MIGRATE_4_5.forEach { st.execute(it) }
+                st.executeQuery("SELECT laeqDb, eventCount, orig_laeq_db, local_floor_db, wind_event_count FROM minutes").use { rs ->
+                    assertTrue(rs.next())
+                    assertEquals(52.5, rs.getDouble(1)); assertEquals(2, rs.getInt(2)); assertEquals(50.0, rs.getDouble(3))
+                    rs.getObject(4); assertTrue(rs.wasNull())
+                    assertEquals(0, rs.getInt(5)); assertTrue(!rs.wasNull())
+                }
+                st.executeQuery(
+                    "SELECT lafMaxDb, thresholdDb, local_floor_db, excess_db, rise_s, decay_s, jaggedness, mid_band_rise_db, lf_share, " +
+                        "lf_flutter_db, shape, wind FROM events"
+                ).use { rs ->
+                    assertTrue(rs.next())
+                    assertEquals(45.1, rs.getDouble(1)); assertEquals(10.0, rs.getDouble(2))
+                    for (i in 3..11) { rs.getObject(i); assertTrue(rs.wasNull(), "column $i") }
+                    assertEquals(0, rs.getInt(12)); assertTrue(!rs.wasNull())
+                }
+                st.execute(MigrationSql.CREATE_MINUTES_V5.replace("`minutes`", "`fresh_minutes`"))
+                st.execute(MigrationSql.CREATE_EVENTS_V5.replace("`events`", "`fresh_events`"))
+                assertEquals(columns(st, "fresh_minutes"), columns(st, "minutes"))
+                assertEquals(columns(st, "fresh_events"), columns(st, "events"))
+                st.executeQuery("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name IN ('minutes','events') ORDER BY name").use { rs ->
+                    assertTrue(rs.next()); assertEquals("index_events_startEpochMs", rs.getString(1))
+                    assertTrue(rs.next()); assertEquals("index_minutes_startEpochMs", rs.getString(1))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun featuresRoundTripThroughTheEntities() {
+        val f = EventFeatures(41.8, 12.7, 1.748, Double.NaN, 0.014, 12.5, 0.008, 0.39, false, EventShape.HUMP)
+        val e = Mappers.run { eventEntity(1, "UNPROCESSED", null).toEvent() }.copy(features = f, thresholdDb = 6.5)
+        val entity = Mappers.run { e.toEntity() }
+        assertEquals(12.7, entity.excessDb); assertEquals(null, entity.decayS); assertEquals("hump", entity.shape); assertEquals(false, entity.wind)
+        assertEquals(e, Mappers.run { entity.toEvent() })
+        val wind = e.copy(features = f.copy(wind = true, lfShare = 0.98), dominantCategory = WindRule.CATEGORY)
+        assertTrue(Mappers.run { wind.toEntity() }.wind)
+        assertEquals(wind, Mappers.run { wind.toEntity().toEvent() })
+        // Events from before v0.4.0: no features.
+        assertEquals(null, Mappers.run { eventEntity(2, "UNPROCESSED", null).toEvent() }.features)
+        val m = Mappers.run { minuteEntity(1, "UNPROCESSED", null, 112.35).toRecord() }.copy(localFloorDb = 38.2, windEventCount = 3)
+        val me = Mappers.run { m.toEntity() }
+        assertEquals(38.2, me.localFloorDb); assertEquals(3, me.windEventCount)
+        assertEquals(m, Mappers.run { me.toRecord() })
+        assertEquals(null, Mappers.run { m.copy(localFloorDb = Double.NaN).toEntity() }.localFloorDb)
+    }
+
+    // ---- Settings v0.3 → v0.4: threshold over the 5-min background → excess over the local floor --
+
+    @Test
+    fun legacyThresholdIsMigratedToTheExcess() {
+        assertEquals(SettingsMigration.Result(6.5, null), SettingsMigration.migrate(10.0)) // the old default: silently
+        val custom = SettingsMigration.migrate(7.0)
+        assertEquals(3.5, custom.excessDb)
+        assertEquals(
+            "Neue Ereigniserkennung (Version 0.4): Ereignisse werden jetzt über dem lokalen Hintergrund (L90 der letzten 30 s) " +
+                "erkannt statt über dem 5-Minuten-Hintergrund. Ihre Schwelle von 7 dB wurde auf 3.5 dB über dem lokalen " +
+                "Hintergrund umgerechnet (der lokale Hintergrund liegt rund 3.5 dB höher). Einstellbar unter Einstellungen → Ereigniserkennung.",
+            custom.notice,
+        )
+        assertEquals(3.0, SettingsMigration.migrate(5.0).excessDb)
+        assertEquals(SettingsMigration.Result(6.5, null), SettingsMigration.migrate(null)) // fresh install
+        assertEquals(6.5, AppSettings().eventExcessDb)
+        assertEquals(30, AppSettings().localFloorWindowSeconds)
+        assertEquals(0.95, AppSettings().windLfShareMin)
+        assertEquals(3.8, AppSettings().windFlutterMinDb)
+        assertTrue(AppSettings().showWindEvents)
     }
 
     // ---- Re-evaluation: scope, entity mapping --------------------------------------------------

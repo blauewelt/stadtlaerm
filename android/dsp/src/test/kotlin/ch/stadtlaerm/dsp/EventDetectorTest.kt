@@ -24,8 +24,8 @@ class EventDetectorTest {
 
     private fun run(levels: List<Double>, bg: Double = 50.0, floor: Double = Double.NEGATIVE_INFINITY): Collector {
         val c = Collector()
-        val d = EventDetector(thresholdDb = 10.0, minLevelDb = floor, listener = c)
-        d.backgroundDb = bg
+        val d = EventDetector(excessDb = 10.0, minLevelDb = floor, listener = c)
+        d.floorDb = bg
         levels.forEachIndexed { i, l -> d.onTick((i + 1L) * tick, l, l, l) }
         d.flush(levels.size.toLong() * tick)
         return c
@@ -104,8 +104,8 @@ class EventDetectorTest {
     @Test
     fun floorChangeAppliesFromTheNextEvent() {
         val c = Collector()
-        val d = EventDetector(thresholdDb = 10.0, minLevelDb = 45.0, listener = c)
-        d.backgroundDb = 20.0
+        val d = EventDetector(excessDb = 10.0, minLevelDb = 45.0, listener = c)
+        d.floorDb = 20.0
         var i = 0L
         fun feed(v: Double, n: Int) = repeat(n) { i++; d.onTick(i * tick, v, v, v) }
         feed(20.0, 8); feed(40.0, 4)

@@ -73,8 +73,10 @@ class ChartGeometry(val model: ChartModel, val plot: PlotRect) {
 
     val otherDots: List<Dot> = model.otherEvents.map { Dot(xOf(it.startEpochMs), yOf(it.lafMaxDb), it, false, model.clipRefOf(it)) }
     val highlightDots: List<Dot> = model.highlightedEvents.map { Dot(xOf(it.startEpochMs), yOf(it.lafMaxDb), it, true, model.clipRefOf(it)) }
+    /** Wind events (hollow grey dots, drawn below everything else; empty when hidden). */
+    val windDots: List<Dot> = model.windEvents.map { Dot(xOf(it.startEpochMs), yOf(it.lafMaxDb), it, false, model.clipRefOf(it)) }
     /** Dots that get the clip accent (events with an audio clip; none in the public app). */
-    val clipAccentDots: List<Dot> get() = (otherDots + highlightDots).filter { it.hasClipAccent }
+    val clipAccentDots: List<Dot> get() = (windDots + otherDots + highlightDots).filter { it.hasClipAccent }
 
     /** Crosshair x of a selection. */
     fun selectionX(s: Selection): Float = when (s) {
@@ -91,7 +93,7 @@ class ChartGeometry(val model: ChartModel, val plot: PlotRect) {
     fun hitTest(x: Float, y: Float, eventRadiusPx: Float): Selection? {
         var best: Dot? = null
         var bestD = Float.MAX_VALUE
-        for (d in highlightDots + otherDots) {
+        for (d in highlightDots + otherDots + windDots) {
             val dist = hypot(d.x - x, d.y - y)
             if (dist <= eventRadiusPx && dist < bestD) { best = d; bestD = dist }
         }

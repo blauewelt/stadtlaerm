@@ -23,7 +23,7 @@ class EngineHooksTest {
         override fun onEventCandidate(startSample: Long) { log += "candidate $startSample" }
         override fun onEventConfirmed(startSample: Long) { log += "confirmed $startSample" }
         override fun onEventDiscarded(startSample: Long) { log += "discarded $startSample" }
-        override fun onEventClosed(startSample: Long, endSample: Long) { log += "closed $startSample $endSample" }
+        override fun onEventClosed(startSample: Long, endSample: Long, features: EventFeatures) { log += "closed $startSample $endSample" }
     }
 
     /** Overrides only [onEvent]: the default [onEventEmitted] must forward to it. */
@@ -35,7 +35,7 @@ class EngineHooksTest {
     private fun signal(): FloatArray = TestSignals.concat(
         TestSignals.whiteNoise(1e-3, 40.0, seed = 1),
         // 0.1 s blip: a candidate that is discarded (too short).
-        TestSignals.add(TestSignals.sine(800.0, 0.008, 0.1), TestSignals.whiteNoise(1e-3, 0.1, seed = 2)),
+        TestSignals.add(TestSignals.sine(800.0, 0.006, 0.1), TestSignals.whiteNoise(1e-3, 0.1, seed = 2)),
         TestSignals.whiteNoise(1e-3, 5.0, seed = 3),
         // 2 s tone: a real event.
         TestSignals.add(TestSignals.sine(800.0, 0.05, 2.0), TestSignals.whiteNoise(1e-3, 2.0, seed = 4)),

@@ -56,6 +56,22 @@ class ClipAssemblerTest {
         assertEquals(0, a.activeCount)
     }
 
+    /** Since 0.4.0 the end is reported after the event's decay tail, possibly after the post-roll. */
+    @Test
+    fun lateEndIsCutBackToEndPlusPostRoll() {
+        val out = ArrayList<AssembledClip>()
+        val a = assembler(out)
+        val f = Feed(a, block)
+        val start = 10_000L
+        val end = 12_500L
+        f.to(25_000, mapOf(start to { a.onCandidate(start) }, start + 500 to { a.onConfirmed(start) }, end + 7_000 to { a.onEnded(start, end) }))
+        val c = out.single()
+        assertEquals((end + 5 * fs - (start - 5 * fs)).toInt(), c.length)
+        assertEquals(end, c.eventEndSample)
+        assertFalse(c.truncated)
+        assertContiguous(c)
+    }
+
     @Test
     fun clipIsCompletedExactlyWhenThePostRollIsIn() {
         val out = ArrayList<AssembledClip>()

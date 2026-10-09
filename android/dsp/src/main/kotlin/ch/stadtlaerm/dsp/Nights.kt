@@ -17,23 +17,30 @@ data class NightSummary(
     /** Actual length of the night in local time: 8 h, or 7 h / 9 h on DST-change nights. */
     val nominalSeconds: Double,
     val laeqDb: Double,
+    /** Bursts: events (after the floor) without wind on the microphone (since v0.4.0). */
     val eventCount: Int,
-    /** Events with LAFmax ≥ background + [NightSummarizer.strongMarginDb]. */
+    /** Bursts with LAFmax ≥ background + [NightSummarizer.strongMarginDb]. */
     val strongEventCount: Int,
     /** Time share per bucket id, weighted by measured duration of minutes with classifier data. */
     val categoryShares: Map<String, Double>,
+    /** Bursts per category (wind events are not included). */
     val eventsByCategory: Map<String, Int>,
+    /** The loudest burst (wind events are not considered). */
     val loudestEvent: NoiseEvent?,
     /** True only if every minute of the night was measured with a calibrated offset. */
     val allCalibrated: Boolean,
     /** Minutes left out because less than half of them had valid audio (mic silenced etc.). */
     val excludedMinutes: Int = 0,
-    /** Events (after the floor) per hour of valid measurement; NaN without valid time. */
+    /** Bursts (events after the floor, without wind) per hour of valid measurement; NaN without valid time. */
     val eventsPerHour: Double = Double.NaN,
     /** "Dynamik": median over the valid minutes of L10 − L90 (dB); NaN without valid minutes. */
     val dynamicsDb: Double = Double.NaN,
     /** True if any minute of the night was re-evaluated with a later calibration («nachträglich kalibriert»). */
     val anyRecalibrated: Boolean = false,
+    /** «Hintergrund (L90)», the hum under the bursts: median over the valid minutes of their L90 (dB). */
+    val humDb: Double = Double.NaN,
+    /** Events (after the floor) flagged as wind on the microphone: not in [eventCount]. */
+    val windEventCount: Int = 0,
 ) {
     /** Share of the night covered by valid audio (0…1). */
     val coverage: Double get() = if (nominalSeconds > 0) (measuredSeconds / nominalSeconds).coerceIn(0.0, 1.0) else 0.0
@@ -41,6 +48,17 @@ data class NightSummary(
 
 /** Burstiness figures shared by the night list and the chart. */
 object Dynamics {
+    /**
+     * The hum («Hintergrund (L90)»): median over [minutes] of their L90 — the steady level the
+     * bursts stand out from (e.g. the distant highway). Minutes without L90 are skipped.
+     */
+    fun medianL90(minutes: List<MinuteRecord>): Double {
+        val d = minutes.mapNotNull { m -> m.l90Db.takeUnless { it.isNaN() } }.sorted()
+        if (d.isEmpty()) return Double.NaN
+        val n = d.size
+        return if (n % 2 == 1) d[n / 2] else (d[n / 2 - 1] + d[n / 2]) / 2
+    }
+
     /** Events per hour of valid measurement time. */
     fun eventsPerHour(events: Int, validSeconds: Double): Double =
         if (validSeconds > 0) events / (validSeconds / 3600.0) else Double.NaN
@@ -86,7 +104,8 @@ object NightSummarizer {
     /**
      * Groups minutes and events into nights, newest first. Minutes are assigned by their start.
      * Only events with LAFmax ≥ [eventMinLevelDb] are counted (the floor is applied at read time
-     * too, so events stored before it existed are treated like new ones).
+     * too, so events stored before it existed are treated like new ones). Wind events are counted
+     * separately ([NightSummary.windEventCount]) and left out of everything else.
      */
     fun summarize(
         minutes: List<MinuteRecord>,
@@ -102,7 +121,7 @@ object NightSummarizer {
         return nights.map { night ->
             val allMinutes = minutesByNight[night].orEmpty()
             val ms = allMinutes.filter { it.coverage >= MIN_MINUTE_COVERAGE && !it.laeqDb.isNaN() }
-            val evs = eventsByNight[night].orEmpty()
+            val (wind, evs) = eventsByNight[night].orEmpty().partition { it.wind }
             var energy = 0.0
             var dur = 0.0
             val shareSum = LinkedHashMap<String, Double>()
@@ -133,6 +152,8 @@ object NightSummarizer {
                 eventsPerHour = Dynamics.eventsPerHour(evs.size, dur),
                 dynamicsDb = Dynamics.medianSpread(ms),
                 anyRecalibrated = allMinutes.any { it.recalibrated },
+                humDb = Dynamics.medianL90(ms),
+                windEventCount = wind.size,
             )
         }
     }

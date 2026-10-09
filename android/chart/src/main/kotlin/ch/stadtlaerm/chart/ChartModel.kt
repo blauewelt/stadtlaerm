@@ -3,6 +3,7 @@ package ch.stadtlaerm.chart
 import ch.stadtlaerm.dsp.MinuteRecord
 import ch.stadtlaerm.dsp.NightSummarizer
 import ch.stadtlaerm.dsp.NoiseEvent
+import ch.stadtlaerm.dsp.WindRule
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -84,27 +85,42 @@ data class YRange(val lo: Double, val hi: Double) {
 /** Window statistics for the summary row. */
 data class WindowSummary(
     val laeqDb: Double,
-    /** Events with LAFmax ≥ the floor in the window (all of them, also in the week view). */
+    /** Bursts: events with LAFmax ≥ the floor in the window, without wind (all of them, also in the week view). */
     val eventCount: Int,
+    /** Bursts of the highlighted category. */
     val highlightCount: Int,
+    /** The loudest burst (wind is not considered). */
     val loudest: NoiseEvent?,
     /** Valid time / elapsed window time (0…1). */
     val coverage: Double,
     /** «unterbrochen 20:54–23:54», «Messung ab 23:54», … */
     val gapTexts: List<String>,
     val anyUncalibrated: Boolean,
-    /** Events (after the floor) per hour of valid measurement. */
+    /** Bursts (events after the floor, without wind) per hour of valid measurement. */
     val eventsPerHour: Double = Double.NaN,
     /** Median over valid minutes of L10 − L90. */
     val dynamicsDb: Double = Double.NaN,
     /** Any minute of the window re-evaluated with a later calibration (shown as its own line under [line]). */
     val anyRecalibrated: Boolean = false,
+    /** «Hintergrund (L90)», the hum: median over the valid minutes of their L90 (same rule as the night list). */
+    val humDb: Double = Double.NaN,
+    /** Events (after the floor) flagged as wind on the microphone: in none of the counts above. */
+    val windCount: Int = 0,
 ) {
-    /** «Messung 76 % der Zeit · 48 Ereignisse/h · Dynamik L10−L90 5,5 dB · unterbrochen …» */
-    fun line(maxGaps: Int = 2): String {
+    /** «Ereignisse» tile: bursts per hour («12/h», «4,5/h»), «–» without valid time. */
+    val eventsPerHourText: String
+        get() = if (eventsPerHour.isNaN()) "–" else "${ChartFmt.comma(eventsPerHour, if (eventsPerHour < 10) 1 else 0)}/h"
+
+    /**
+     * «LAeq 45,2 dB(A) · 48 Ereignisse (5 Töff & Poser) · Messung 76 % der Zeit · Dynamik L10−L90 5,5 dB · unterbrochen …»
+     * ([highlightName] null: without the highlighted category).
+     */
+    fun line(maxGaps: Int = 2, highlightName: String? = null): String {
         val parts = ArrayList<String>()
+        if (!laeqDb.isNaN()) parts += "LAeq ${ChartFmt.comma(laeqDb, 1)} dB(A)"
+        parts += "$eventCount ${if (eventCount == 1) "Ereignis" else "Ereignisse"}" +
+            (if (highlightName != null) " ($highlightCount $highlightName)" else "")
         parts += "Messung ${ChartFmt.percent(coverage)} der Zeit"
-        if (!eventsPerHour.isNaN()) parts += "${ChartFmt.comma(eventsPerHour, if (eventsPerHour < 10) 1 else 0)} Ereignisse/h"
         if (!dynamicsDb.isNaN()) parts += "Dynamik L10−L90 ${ChartFmt.comma(dynamicsDb, 1)} dB"
         parts += gapTexts.take(maxGaps)
         val more = gapTexts.size - maxGaps
@@ -129,7 +145,7 @@ class ChartModel(
     val gridTicks: List<Long>,
     val axisLabels: List<AxisLabel>,
     val yRange: YRange,
-    /** Events drawn, non-highlighted first (they are drawn below), each list oldest first. */
+    /** Events drawn, non-highlighted first (they are drawn below), each list oldest first. Never wind. */
     val otherEvents: List<NoiseEvent>,
     val highlightedEvents: List<NoiseEvent>,
     /** True if the week view dropped events beyond [WEEK_EVENT_CAP]. */
@@ -139,11 +155,16 @@ class ChartModel(
     val zone: ZoneId,
     /** Clip reference per event start (see [ChartData.clipRefs]); empty in the public app. */
     val clipRefs: Map<Long, String> = emptyMap(),
+    /**
+     * Wind events (≥ the floor), drawn as small hollow grey dots below the others when shown
+     * (setting «Wind-Ereignisse zeigen»; never in the week view). Not counted anywhere.
+     */
+    val windEvents: List<NoiseEvent> = emptyList(),
 ) {
     /** The event's clip reference, or null (always null in the public app). */
     fun clipRefOf(e: NoiseEvent): String? = if (clipRefs.isEmpty()) null else clipRefs[e.startEpochMs]
 
-    val isEmpty: Boolean get() = segments.isEmpty() && otherEvents.isEmpty() && highlightedEvents.isEmpty()
+    val isEmpty: Boolean get() = segments.isEmpty() && otherEvents.isEmpty() && highlightedEvents.isEmpty() && windEvents.isEmpty()
     val anyUncalibrated: Boolean get() = summary.anyUncalibrated
 
     /** Nearest valid point to [t], or null if none within [maxDistanceMs]. */
@@ -176,7 +197,7 @@ class ChartModel(
 
         fun isValid(m: MinuteRecord): Boolean = m.coverage >= MIN_COVERAGE && !m.laeqDb.isNaN()
 
-        fun build(data: ChartData, zone: ZoneId, highlight: String, eventFloorDb: Double): ChartModel {
+        fun build(data: ChartData, zone: ZoneId, highlight: String, eventFloorDb: Double, showWind: Boolean = true): ChartModel {
             val w = data.window
             val windows = Windows(zone)
             val hourly = w.mode == RangeMode.WEEK
@@ -186,8 +207,9 @@ class ChartModel(
             val dataEnd = minOf(w.endMs, maxOf(data.nowMs, w.startMs))
             val gaps = gaps(points.filter { it.valid }.map { Span(it.startMs, it.endMs) }, w.startMs, dataEnd)
 
-            // Events: the floor everywhere (also for events stored before it existed).
-            val floored = data.events.filter { it.startEpochMs in w && it.reachesFloor(eventFloorDb) }
+            // Events: the floor everywhere (also for events stored before it existed); wind apart.
+            val (wind, floored) = data.events.filter { it.startEpochMs in w && it.reachesFloor(eventFloorDb) }.partition { it.wind }
+            val windShown = if (showWind && !hourly) wind.sortedBy { it.startEpochMs } else emptyList()
             var shown = floored
             var capped = false
             if (hourly) {
@@ -201,13 +223,13 @@ class ChartModel(
             shown = shown.sortedBy { it.startEpochMs }
             val (hl, other) = shown.partition { it.dominantCategory == highlight }
 
-            val yRange = yRange(points, shown)
-            val summary = summary(data, minutes, floored, highlight, gaps, windows, dataEnd)
+            val yRange = yRange(points, shown + windShown)
+            val summary = summary(data, minutes, floored, highlight, gaps, windows, dataEnd).copy(windCount = wind.size)
             return ChartModel(
                 window = w, nowMs = data.nowMs, hourly = hourly, points = points, segments = segments, gaps = gaps,
                 nightSpans = windows.nightSpans(w), gridTicks = windows.gridTicks(w), axisLabels = windows.axisLabels(w),
                 yRange = yRange, otherEvents = other, highlightedEvents = hl, eventsCapped = capped,
-                highlight = highlight, summary = summary, zone = zone, clipRefs = data.clipRefs,
+                highlight = highlight, summary = summary, zone = zone, clipRefs = data.clipRefs, windEvents = windShown,
             )
         }
 
@@ -337,6 +359,7 @@ class ChartModel(
                 eventsPerHour = ch.stadtlaerm.dsp.Dynamics.eventsPerHour(floored.size, secs),
                 dynamicsDb = ch.stadtlaerm.dsp.Dynamics.medianSpread(valid),
                 anyRecalibrated = minutes.any { it.recalibrated },
+                humDb = ch.stadtlaerm.dsp.Dynamics.medianL90(valid),
             )
         }
 
@@ -426,6 +449,7 @@ object ChartCategories {
     )
     fun name(id: String?): String = when (id) {
         null -> "nicht klassifiziert (aus)"
+        WindRule.CATEGORY -> WindRule.NAME_DE // the detector's wind flag, not a chip
         else -> all.firstOrNull { it.first == id }?.second ?: id
     }
 }

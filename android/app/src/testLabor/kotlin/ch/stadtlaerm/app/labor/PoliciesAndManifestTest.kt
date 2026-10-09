@@ -1,5 +1,7 @@
 package ch.stadtlaerm.app.labor
 
+import ch.stadtlaerm.dsp.EventFeatures
+import ch.stadtlaerm.dsp.EventShape
 import ch.stadtlaerm.dsp.NoiseEvent
 import ch.stadtlaerm.dsp.classify.CategoryDecision
 import ch.stadtlaerm.dsp.classify.ClassifierResult
@@ -114,7 +116,8 @@ class PoliciesAndManifestTest {
             deviceModel = "Google Pixel 7", androidRelease = "15", sdkInt = 35, appVersion = "0.3.3-labor", appVersionCode = 7,
             audioSource = "UNPROCESSED", encoding = "PCM_FLOAT", effects = listOf("AGC: nicht vorhanden"),
             calibrationId = 4, calibrationOffsetDb = 112.25, calibrated = true,
-            eventThresholdDb = 10.0, eventMinLevelDb = 30.0, classifierEnabled = true, classifierNormalize = true,
+            eventExcessDb = 6.5, localFloorWindowSeconds = 30.0, eventMinLevelDb = 30.0, windLfShareMin = 0.95, windFlutterMinDb = 3.8,
+            classifierEnabled = true, classifierNormalize = true,
             classifierIntervalSeconds = 1.0,
             clips = true, continuous = false, clipEvery = 2, maxBytes = 2_000_000_000,
         )
@@ -122,7 +125,8 @@ class PoliciesAndManifestTest {
             """{"type":"session_start","session":"20261007_234210","time":"2026-10-07T23:42:10.250+02:00","zone":"Europe/Zurich",""" +
                 """"device":"Google Pixel 7","android":"15","sdk":35,"app":"0.3.3-labor","appCode":7,"audioSource":"UNPROCESSED",""" +
                 """"encoding":"PCM_FLOAT","effects":["AGC: nicht vorhanden"],"calibrationId":4,"calibrationOffsetDb":112.25,"calibrated":true,""" +
-                """"eventThresholdDb":10,"eventFloorDb":30,"classifier":true,"classifierLevelAdjustment":true,"classifierIntervalS":1,""" +
+                """"detector":"v2","eventExcessDb":6.5,"localFloorWindowS":30,"eventFloorDb":30,"windLfShareMin":0.95,"windFlutterMinDb":3.8,""" +
+                """"classifier":true,"classifierLevelAdjustment":true,"classifierIntervalS":1,""" +
                 """"inputSampleRate":48000,"clips":true,"continuous":false,"clipEvery":2,"maxBytes":2000000000}""",
             ManifestLines.sessionStart("20261007_234210", t0, zurich, info),
         )
@@ -165,6 +169,29 @@ class PoliciesAndManifestTest {
             line,
         )
         assertFalse('\n' in line)
+    }
+
+    @Test
+    fun eventLineAndClipLineCarryTheDetectorV2Numbers() {
+        val f = EventFeatures(41.84, 12.66, 1.748, Double.NaN, 0.0141, 12.52, 0.0083, 0.391, false, EventShape.HUMP)
+        val line = ManifestLines.event("S", t0, zurich, 480_000, 702_000, t0, t0 + 4625, f)
+        assertEquals(
+            """{"type":"event","session":"S","time":"2026-10-07T23:42:10.250+02:00","eventStart":"2026-10-07T23:42:10.250+02:00",""" +
+                """"eventEnd":"2026-10-07T23:42:14.875+02:00","durationS":4.625,"eventStartSample":480000,"eventEndSample":702000,""" +
+                """"features":{"localFloorDb":41.84,"excessDb":12.66,"riseS":1.748,"decayS":null,"jaggedness":0.0141,""" +
+                """"midBandRiseDb":12.52,"lfShare":0.0083,"lfFlutterDb":0.39,"wind":false,"shape":"hump"}}""",
+            line,
+        )
+        val ev = NoiseEvent(
+            startEpochMs = t0, startIso = "", durationSeconds = 0.625, lafMaxDb = 57.9, selDb = 52.2, backgroundDb = 41.9,
+            thresholdDb = 6.5, dominantCategory = "wind", dominantScore = 0f, topLabels = emptyList(),
+            classifierFrames = 1, calibrationId = null, audioSource = "UNPROCESSED", calibrated = false,
+            features = f.copy(wind = true, lfShare = 0.985, shape = EventShape.IMPULSE),
+        )
+        val clip = AssembledClip(480_000, 510_000, 240_000, emptyList(), 510_000, truncated = false, endedEarly = false)
+        val clipLine = ManifestLines.clip("S", t0, zurich, 3, "clips/ev_3.wav", ev, clip, 170_000)
+        assertTrue(""""category":"wind","categoryScore":0,"top3":[],"features":{"localFloorDb":41.84,""" in clipLine, clipLine)
+        assertTrue(""""lfShare":0.985,"lfFlutterDb":0.39,"wind":true,"shape":"impulse"},"offsetOfEventStartInClipMs":5000""" in clipLine, clipLine)
     }
 
     @Test

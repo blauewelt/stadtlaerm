@@ -53,8 +53,8 @@ object MigrationSql {
         "ALTER TABLE `events` ADD COLUMN `min_level_db` REAL",
     )
 
-    /** v4 `minutes` table, exactly as Room generates it (verified by a unit test). */
-    const val CREATE_MINUTES_V4 =
+    /** v4 `minutes` table, exactly as Room generates it for v0.3.2 – v0.3.4. */
+    const val CREATE_MINUTES_V4_PREFIX =
         "CREATE TABLE IF NOT EXISTS `minutes` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startEpochMs` INTEGER NOT NULL, " +
             "`startIso` TEXT NOT NULL, `durationSeconds` REAL NOT NULL, `laeqDb` REAL, `lafMaxDb` REAL, `lafMinDb` REAL, " +
             "`l1Db` REAL, `l10Db` REAL, `l50Db` REAL, `l90Db` REAL, `eventCount` INTEGER NOT NULL, `dominantCategory` TEXT, " +
@@ -62,17 +62,19 @@ object MigrationSql {
             "`calibrationOffsetDb` REAL NOT NULL, `audioSource` TEXT NOT NULL, `calibrated` INTEGER NOT NULL, " +
             "`validSeconds` REAL NOT NULL, `coverage` REAL NOT NULL, `clockCorrections` INTEGER NOT NULL, " +
             "`orig_laeq_db` REAL, `orig_lafmax_db` REAL, `orig_lafmin_db` REAL, `orig_l1_db` REAL, `orig_l10_db` REAL, " +
-            "`orig_l50_db` REAL, `orig_l90_db` REAL, `recalibrated_from_id` TEXT, `recalibration_offset_db` REAL)"
+            "`orig_l50_db` REAL, `orig_l90_db` REAL, `recalibrated_from_id` TEXT, `recalibration_offset_db` REAL"
+    const val CREATE_MINUTES_V4 = "$CREATE_MINUTES_V4_PREFIX)"
 
-    /** v4 `events` table, exactly as Room generates it (verified by a unit test). */
-    const val CREATE_EVENTS_V4 =
+    /** v4 `events` table, exactly as Room generates it for v0.3.2 – v0.3.4. */
+    const val CREATE_EVENTS_V4_PREFIX =
         "CREATE TABLE IF NOT EXISTS `events` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startEpochMs` INTEGER NOT NULL, " +
             "`startIso` TEXT NOT NULL, `durationSeconds` REAL NOT NULL, `lafMaxDb` REAL NOT NULL, `selDb` REAL NOT NULL, " +
             "`backgroundDb` REAL NOT NULL, `thresholdDb` REAL NOT NULL, `dominantCategory` TEXT, `dominantScore` REAL NOT NULL, " +
             "`topLabelsJson` TEXT NOT NULL, `classifierFrames` INTEGER NOT NULL, `calibrationId` INTEGER, " +
             "`audioSource` TEXT NOT NULL, `calibrated` INTEGER NOT NULL, `min_level_db` REAL, " +
             "`orig_lafmax_db` REAL, `orig_sel_db` REAL, `orig_background_db` REAL, `recalibrated_from_id` TEXT, " +
-            "`recalibration_offset_db` REAL)"
+            "`recalibration_offset_db` REAL"
+    const val CREATE_EVENTS_V4 = "$CREATE_EVENTS_V4_PREFIX)"
 
     /**
      * v3 → v4: re-evaluation of stored data with a later calibration. Minutes and events keep their
@@ -91,6 +93,31 @@ object MigrationSql {
                 "ALTER TABLE `events` ADD COLUMN `recalibrated_from_id` TEXT",
                 "ALTER TABLE `events` ADD COLUMN `recalibration_offset_db` REAL",
             )
+
+    /**
+     * v4 → v5 (v0.4.0, detector v2): events gain the features (local floor, excess, rise/decay,
+     * jaggedness, mid-band rise, LF share and flutter, the wind flag and the shape), minutes the
+     * median local floor and the number of wind events. Existing rows: NULL features, wind 0,
+     * wind_event_count 0 (no wind detection before v0.4.0).
+     */
+    val MIGRATE_4_5: List<String> =
+        listOf("local_floor_db", "excess_db", "rise_s", "decay_s", "jaggedness", "mid_band_rise_db", "lf_share", "lf_flutter_db")
+            .map { "ALTER TABLE `events` ADD COLUMN `$it` REAL" } +
+            listOf(
+                "ALTER TABLE `events` ADD COLUMN `wind` INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE `events` ADD COLUMN `shape` TEXT",
+                "ALTER TABLE `minutes` ADD COLUMN `local_floor_db` REAL",
+                "ALTER TABLE `minutes` ADD COLUMN `wind_event_count` INTEGER NOT NULL DEFAULT 0",
+            )
+
+    /** v5 `minutes` table, exactly as Room generates it (verified by a unit test). */
+    const val CREATE_MINUTES_V5 = CREATE_MINUTES_V4_PREFIX +
+        ", `local_floor_db` REAL, `wind_event_count` INTEGER NOT NULL DEFAULT 0)"
+
+    /** v5 `events` table, exactly as Room generates it (verified by a unit test). */
+    const val CREATE_EVENTS_V5 = CREATE_EVENTS_V4_PREFIX +
+        ", `local_floor_db` REAL, `excess_db` REAL, `rise_s` REAL, `decay_s` REAL, `jaggedness` REAL, " +
+        "`mid_band_rise_db` REAL, `lf_share` REAL, `lf_flutter_db` REAL, `wind` INTEGER NOT NULL DEFAULT 0, `shape` TEXT)"
 }
 
 /**
@@ -116,5 +143,11 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
 val MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
         MigrationSql.MIGRATE_3_4.forEach { db.execSQL(it) }
+    }
+}
+
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        MigrationSql.MIGRATE_4_5.forEach { db.execSQL(it) }
     }
 }

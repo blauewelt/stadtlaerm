@@ -20,10 +20,26 @@ import kotlinx.serialization.json.put
 import java.io.File
 import java.time.ZoneId
 
+import ch.stadtlaerm.dsp.EngineConfig
+import ch.stadtlaerm.dsp.ThresholdMigration
+import ch.stadtlaerm.dsp.WindRule
+
 private val DEFAULT_INTERVAL_S: Int = ch.stadtlaerm.dsp.EngineConfig.DEFAULT_CLASSIFIER_INTERVAL_SECONDS.toInt()
 
 data class AppSettings(
-    val eventThresholdDb: Double = 10.0,
+    /**
+     * «Ereignis-Schwelle über lokalem Hintergrund»: an event starts when LAF reaches the local floor
+     * + this (dB, 3–20, 0.5 steps). Replaces the v0.3 `eventThresholdDb` (over the 5-min background).
+     */
+    val eventExcessDb: Double = EngineConfig.DEFAULT_EVENT_EXCESS_DB,
+    /** «Lokaler Hintergrund: Fenster»: the local floor is the L90 over this trailing window (s, 10–60). */
+    val localFloorWindowSeconds: Int = EngineConfig.DEFAULT_LOCAL_FLOOR_WINDOW_SECONDS.toInt(),
+    /** Experten: wind if the 20–200 Hz energy share is at least this … */
+    val windLfShareMin: Double = WindRule.DEFAULT_LF_SHARE,
+    /** … or the low-frequency flutter at least this (dB). */
+    val windFlutterMinDb: Double = WindRule.DEFAULT_FLUTTER_DB,
+    /** Experten: draw wind events in the chart (hollow grey dots); they are never counted. */
+    val showWindEvents: Boolean = true,
     val classifierEnabled: Boolean = true,
     /** Once per second by default (EngineConfig.DEFAULT_CLASSIFIER_INTERVAL_SECONDS). */
     val classifierIntervalSeconds: Int = DEFAULT_INTERVAL_S,
@@ -42,17 +58,82 @@ data class AppSettings(
     companion object {
         const val EVENT_MIN_LEVEL_MIN = 20.0
         const val EVENT_MIN_LEVEL_MAX = 70.0
+        const val EVENT_EXCESS_MIN = ThresholdMigration.EXCESS_MIN
+        const val EVENT_EXCESS_MAX = ThresholdMigration.EXCESS_MAX
+        const val LOCAL_WINDOW_MIN = 10
+        const val LOCAL_WINDOW_MAX = 60
+        const val WIND_LF_SHARE_MIN = 0.80
+        const val WIND_LF_SHARE_MAX = 1.00
+        const val WIND_FLUTTER_MIN = 2.0
+        const val WIND_FLUTTER_MAX = 10.0
     }
+}
+
+/**
+ * v0.3 → v0.4 settings migration (pure, unit-tested): the stored `event_threshold_db` (over the
+ * 5-min background, default 10) becomes `event_excess_db` (over the local floor) =
+ * [ThresholdMigration.excessFromLegacyThreshold]. A user who had changed the threshold is told
+ * once ([Result.notice]); the default maps silently to the new default 6.5.
+ */
+object SettingsMigration {
+    data class Result(val excessDb: Double, val notice: String?)
+
+    /** [oldThresholdDb]: the stored v0.3 value, null if none was ever stored. */
+    fun migrate(oldThresholdDb: Double?): Result {
+        if (oldThresholdDb == null) return Result(EngineConfig.DEFAULT_EVENT_EXCESS_DB, null)
+        val excess = ThresholdMigration.excessFromLegacyThreshold(oldThresholdDb)
+        val custom = Math.abs(oldThresholdDb - ThresholdMigration.LEGACY_DEFAULT_THRESHOLD_DB) > 1e-6
+        return Result(excess, if (custom) notice(oldThresholdDb, excess) else null)
+    }
+
+    fun notice(oldThresholdDb: Double, excessDb: Double): String =
+        "Neue Ereigniserkennung (Version 0.4): Ereignisse werden jetzt über dem lokalen Hintergrund (L90 der letzten 30 s) " +
+            "erkannt statt über dem 5-Minuten-Hintergrund. Ihre Schwelle von ${fmt(oldThresholdDb)} dB wurde auf " +
+            "${fmt(excessDb)} dB über dem lokalen Hintergrund umgerechnet (der lokale Hintergrund liegt rund 3.5 dB höher). " +
+            "Einstellbar unter Einstellungen → Ereigniserkennung."
+
+    private fun fmt(v: Double): String = if (v % 1.0 == 0.0) String.format(java.util.Locale.ROOT, "%.0f", v)
+        else String.format(java.util.Locale.ROOT, "%.1f", v)
 }
 
 /** Small settings store on SharedPreferences, exposed as a StateFlow. */
 class SettingsStore(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+
+    init {
+        // v0.3 → v0.4: event_threshold_db (over the 5-min background) → event_excess_db (over the
+        // local floor), once. The old key is left alone (a downgrade would still find it).
+        if (!prefs.contains(KEY_EXCESS)) {
+            val old = if (prefs.contains(KEY_LEGACY_THRESHOLD)) prefs.getFloat(KEY_LEGACY_THRESHOLD, 10f).toDouble() else null
+            val m = SettingsMigration.migrate(old)
+            val edit = prefs.edit().putFloat(KEY_EXCESS, m.excessDb.toFloat())
+            if (m.notice != null) edit.putString(KEY_NOTICE, m.notice)
+            edit.apply()
+        }
+    }
+
     private val _state = MutableStateFlow(read())
     val state: StateFlow<AppSettings> = _state
 
+    private val _notice = MutableStateFlow(prefs.getString(KEY_NOTICE, null))
+    /** The one-time notice about the migrated threshold, until dismissed. */
+    val migrationNotice: StateFlow<String?> = _notice
+
+    fun dismissMigrationNotice() {
+        prefs.edit().remove(KEY_NOTICE).apply()
+        _notice.value = null
+    }
+
     private fun read() = AppSettings(
-        eventThresholdDb = prefs.getFloat("event_threshold_db", 10f).toDouble(),
+        eventExcessDb = prefs.getFloat(KEY_EXCESS, EngineConfig.DEFAULT_EVENT_EXCESS_DB.toFloat()).toDouble()
+            .coerceIn(AppSettings.EVENT_EXCESS_MIN, AppSettings.EVENT_EXCESS_MAX),
+        localFloorWindowSeconds = prefs.getInt("local_floor_window_s", EngineConfig.DEFAULT_LOCAL_FLOOR_WINDOW_SECONDS.toInt())
+            .coerceIn(AppSettings.LOCAL_WINDOW_MIN, AppSettings.LOCAL_WINDOW_MAX),
+        windLfShareMin = prefs.getFloat("wind_lf_share_min", WindRule.DEFAULT_LF_SHARE.toFloat()).toDouble()
+            .coerceIn(AppSettings.WIND_LF_SHARE_MIN, AppSettings.WIND_LF_SHARE_MAX),
+        windFlutterMinDb = prefs.getFloat("wind_flutter_min_db", WindRule.DEFAULT_FLUTTER_DB.toFloat()).toDouble()
+            .coerceIn(AppSettings.WIND_FLUTTER_MIN, AppSettings.WIND_FLUTTER_MAX),
+        showWindEvents = prefs.getBoolean("show_wind_events", true),
         classifierEnabled = prefs.getBoolean("classifier_enabled", true),
         classifierIntervalSeconds = prefs.getInt("classifier_interval_s", DEFAULT_INTERVAL_S),
         classifierNormalize = prefs.getBoolean("classifier_normalize", true),
@@ -66,7 +147,11 @@ class SettingsStore(context: Context) {
     fun update(transform: (AppSettings) -> AppSettings) {
         val n = transform(_state.value)
         prefs.edit()
-            .putFloat("event_threshold_db", n.eventThresholdDb.toFloat())
+            .putFloat(KEY_EXCESS, n.eventExcessDb.toFloat())
+            .putInt("local_floor_window_s", n.localFloorWindowSeconds)
+            .putFloat("wind_lf_share_min", n.windLfShareMin.toFloat())
+            .putFloat("wind_flutter_min_db", n.windFlutterMinDb.toFloat())
+            .putBoolean("show_wind_events", n.showWindEvents)
             .putBoolean("classifier_enabled", n.classifierEnabled)
             .putInt("classifier_interval_s", n.classifierIntervalSeconds)
             .putBoolean("classifier_normalize", n.classifierNormalize)
@@ -76,6 +161,12 @@ class SettingsStore(context: Context) {
             .putBoolean("stop_on_task_removed", n.stopOnTaskRemoved)
             .apply()
         _state.value = n
+    }
+
+    companion object {
+        const val KEY_EXCESS = "event_excess_db"
+        const val KEY_LEGACY_THRESHOLD = "event_threshold_db"
+        const val KEY_NOTICE = "excess_migration_notice"
     }
 }
 

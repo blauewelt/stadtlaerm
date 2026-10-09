@@ -33,17 +33,21 @@ data class DetectedEvent(
     val lafMaxDb: Double,
     /** Sound exposure level LAE (re 1 s). */
     val selDb: Double,
+    /** 5-min background (L90) at the start, for continuity with v0.3 (not used for detection). */
     val backgroundDb: Double,
+    /** The excess setting in force (dB above the local floor; before v0.4.0: above the background). */
     val thresholdDb: Double,
     /** Absolute floor the event's LAFmax had to reach (see [EventDetector.minLevelDb]). */
     val minLevelDb: Double = Double.NEGATIVE_INFINITY,
+    /** Local floor (L90 of LAF over the trailing local window) at the start, frozen for the event. */
+    val localFloorDb: Double = Double.NaN,
 )
 
 /**
- * Single-event detector working on 125 ms LAF ticks.
+ * Single-event detector working on 125 ms LAF ticks (detector v2, engine 0.4.0).
  *
- * - Starts when LAF > background + threshold.
- * - Continues while LAF ≥ background + threshold − hysteresis (background frozen at the start).
+ * - Starts when LAF ≥ local floor + [excessDb] (the local floor is frozen at the start).
+ * - Continues while LAF ≥ floor + excess − [hysteresisDb].
  * - Kept only if it lasted ≥ [minDurationSeconds] **and** its LAFmax reached [minLevelDb] (an
  *   absolute floor, so that keystrokes 10 dB above a 20 dB background are not events);
  *   force-closed after [maxDurationSeconds]. A candidate that never reaches the floor is
@@ -53,7 +57,8 @@ data class DetectedEvent(
  * - SEL is integrated from the un-time-weighted per-tick LAeq: LAE = 10·log10(Σ 10^(Leq_i/10)·Δt / 1 s).
  */
 class EventDetector(
-    var thresholdDb: Double = 10.0,
+    /** Start threshold above the local floor (dB). Read at event start. */
+    var excessDb: Double = 6.5,
     val hysteresisDb: Double = 3.0,
     val minDurationSeconds: Double = 0.5,
     val maxDurationSeconds: Double = 300.0,
@@ -77,14 +82,18 @@ class EventDetector(
     private val minTicks = kotlin.math.ceil(minDurationSeconds / tickSeconds - 1e-9).toInt()
     private val maxTicks = (maxDurationSeconds / tickSeconds).toInt()
 
-    /** Current background (L90 of trailing window); NaN disables detection. */
+    /** Current local floor (dB); NaN disables detection. */
+    var floorDb: Double = Double.NaN
+
+    /** Current 5-min background (dB), recorded with the event for continuity; NaN → the floor is recorded. */
     var backgroundDb: Double = Double.NaN
 
     private var active = false
     private var startSample = 0L
+    private var floorAtStart = 0.0
     private var bgAtStart = 0.0
-    private var thrAtStart = 0.0
-    private var floorAtStart = Double.NEGATIVE_INFINITY
+    private var excessAtStart = 0.0
+    private var minLevelAtStart = Double.NEGATIVE_INFINITY
     private var ticks = 0
     private var lafMax = Double.NEGATIVE_INFINITY
     private var energy = 0.0
@@ -94,6 +103,8 @@ class EventDetector(
     val activeStartSample: Long? get() = if (active) startSample else null
     /** A candidate that has not (yet) reached the minimum duration. */
     val isUnconfirmedCandidate: Boolean get() = active && !confirmed
+    /** The local floor frozen for the running candidate (NaN if none). */
+    val activeFloorDb: Double get() = if (active) floorAtStart else Double.NaN
 
     /**
      * Ends a running event at [endSample] because the following audio is invalid (e.g. the
@@ -111,14 +122,15 @@ class EventDetector(
      */
     fun onTick(tickEndSample: Long, lafDb: Double, tickLafMaxDb: Double, tickLeqDb: Double) {
         if (!active) {
-            val bg = backgroundDb
-            if (bg.isNaN()) return
-            if (lafDb > bg + thresholdDb) {
+            val floor = floorDb
+            if (floor.isNaN()) return
+            if (lafDb >= floor + excessDb) {
                 active = true
                 startSample = tickEndSample - tickSamples
-                bgAtStart = bg
-                thrAtStart = thresholdDb
-                floorAtStart = minLevelDb
+                floorAtStart = floor
+                bgAtStart = if (backgroundDb.isNaN()) floor else backgroundDb
+                excessAtStart = excessDb
+                minLevelAtStart = minLevelDb
                 ticks = 0
                 lafMax = Double.NEGATIVE_INFINITY
                 energy = 0.0
@@ -128,7 +140,7 @@ class EventDetector(
             }
             return
         }
-        if (lafDb < bgAtStart + thrAtStart - hysteresisDb) {
+        if (lafDb < floorAtStart + excessAtStart - hysteresisDb) {
             close(tickEndSample - tickSamples)
             return
         }
@@ -140,7 +152,7 @@ class EventDetector(
         ticks++
         if (tickLafMaxDb > lafMax) lafMax = tickLafMaxDb
         energy += 10.0.pow(tickLeqDb / 10.0) * tickSeconds
-        if (!confirmed && ticks >= minTicks && lafMax >= floorAtStart) {
+        if (!confirmed && ticks >= minTicks && lafMax >= minLevelAtStart) {
             confirmed = true
             listener.onConfirmed(startSample)
         }
@@ -166,8 +178,9 @@ class EventDetector(
                 lafMaxDb = lafMax,
                 selDb = 10.0 * log10(energy),
                 backgroundDb = bgAtStart,
-                thresholdDb = thrAtStart,
-                minLevelDb = floorAtStart,
+                thresholdDb = excessAtStart,
+                minLevelDb = minLevelAtStart,
+                localFloorDb = floorAtStart,
             )
         )
     }

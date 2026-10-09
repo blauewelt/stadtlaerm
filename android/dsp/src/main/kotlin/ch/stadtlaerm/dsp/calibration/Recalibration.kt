@@ -42,9 +42,13 @@ object Recalibration {
         val fromOffset = if (first) m.calibrationOffsetDb else m.recalibrationOffsetDb!!
         val restore = fromId == target.calibrationId.toString()
         val l = if (restore) original else original.shifted(target.offsetDb - fromOffset)
+        // The local floor (v0.4.0) has no orig_ column: undo the shift applied so far (current
+        // offset − original offset, both stored with the minute), then apply the new one.
+        val floorOriginal = m.localFloorDb - (m.calibrationOffsetDb - fromOffset)
+        val floor = if (restore) floorOriginal else floorOriginal + (target.offsetDb - fromOffset)
         return m.copy(
             laeqDb = l.laeqDb, lafMaxDb = l.lafMaxDb, lafMinDb = l.lafMinDb, l1Db = l.l1Db,
-            l10Db = l.l10Db, l50Db = l.l50Db, l90Db = l.l90Db,
+            l10Db = l.l10Db, l50Db = l.l50Db, l90Db = l.l90Db, localFloorDb = floor,
             calibrationId = target.calibrationId, calibrationOffsetDb = target.offsetDb, calibrated = true,
             // Back on the calibration it was measured with: the record is original again.
             original = if (restore) null else original,
@@ -67,6 +71,8 @@ object Recalibration {
         val l = if (restore) original else original.shifted(target.offsetDb - fromOffset)
         return e.copy(
             lafMaxDb = l.lafMaxDb, selDb = l.selDb, backgroundDb = l.backgroundDb,
+            // The local floor is a level too: LAFmax − excess (the excess does not depend on the offset).
+            features = e.features?.let { it.copy(localFloorDb = l.lafMaxDb - it.excessDb) },
             calibrationId = target.calibrationId, calibrated = true,
             original = if (restore) null else original,
             recalibratedFromId = if (restore) null else fromId,

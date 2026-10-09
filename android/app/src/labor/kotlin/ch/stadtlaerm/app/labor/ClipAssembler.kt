@@ -37,6 +37,8 @@ class AssembledClip(
  * discarded, or that [accept] rejects at confirmation (clip rate), are dropped.
  *
  * Sample indices count input samples since the start of the measurement, exactly like the engine.
+ * [onEnded] may come after the post-roll has already been copied (the engine reports the end after
+ * the event's tail); the clip is then cut back to end + post-roll.
  * The lifecycle calls ([onCandidate] …) may come before the block containing that sample has been
  * passed to [onBlock] (the engine reports them while processing the block); clips are filled only in
  * [onBlock], after the block has been appended to the ring.
@@ -130,7 +132,15 @@ class ClipAssembler(
                 // The ring no longer reaches back that far (late start): shorten the pre-roll.
                 a.clipStart = minOf(oldest, a.eventStart); a.filledUntil = a.clipStart
             }
-            val until = minOf(position, limit(a))
+            val lim = limit(a)
+            // The end can be reported late (since 0.4.0 after the event's decay tail, ≤ 5 s): audio
+            // already copied beyond the post-roll is cut off again.
+            if (a.filledUntil > lim && a.filledUntil > a.clipStart) {
+                val cut = minOf(a.filledUntil - lim, a.length.toLong()).toInt()
+                a.length -= cut
+                a.filledUntil -= cut
+            }
+            val until = minOf(position, lim)
             if (until > a.filledUntil) copy(a, a.filledUntil, until)
             if (a.confirmed && a.eventEnd >= 0 && a.filledUntil >= limit(a)) {
                 it.remove()

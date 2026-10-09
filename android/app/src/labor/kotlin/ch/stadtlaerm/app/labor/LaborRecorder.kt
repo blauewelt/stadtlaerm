@@ -8,6 +8,7 @@ import ch.stadtlaerm.app.BuildConfig
 import ch.stadtlaerm.app.audio.AudioTap
 import ch.stadtlaerm.app.audio.AudioTapSession
 import ch.stadtlaerm.app.data.CalibrationRepository
+import ch.stadtlaerm.dsp.EventFeatures
 import ch.stadtlaerm.dsp.NoiseEvent
 import ch.stadtlaerm.dsp.classify.ClassifierResult
 import kotlinx.coroutines.flow.update
@@ -157,7 +158,13 @@ class LaborRecorder(context: Context, private val settings: LaborSettings) : Aud
     override fun onEventStarted(startSample: Long) { if (active) assembler?.onCandidate(startSample) }
     override fun onEventConfirmed(startSample: Long) { if (active) assembler?.onConfirmed(startSample) }
     override fun onEventDiscarded(startSample: Long) { if (active) assembler?.onDiscarded(startSample) }
-    override fun onEventEnded(startSample: Long, endSample: Long) { if (active) assembler?.onEnded(startSample, endSample) }
+    override fun onEventEnded(startSample: Long, endSample: Long, features: EventFeatures) {
+        if (!active) return
+        assembler?.onEnded(startSample, endSample)
+        queue.offer(
+            Line(ManifestLines.event(sessionId, System.currentTimeMillis(), zone, startSample, endSample, epochMsAt(startSample), epochMsAt(endSample), features))
+        )
+    }
 
     /** Every classifier run (capture thread): logged and kept for the clip traces. */
     override fun onClassifierResult(wallClockMs: Long, result: ClassifierResult) {
@@ -347,7 +354,8 @@ class LaborRecorder(context: Context, private val settings: LaborSettings) : Aud
         appVersion = BuildConfig.VERSION_NAME, appVersionCode = BuildConfig.VERSION_CODE,
         audioSource = s.audioSource, encoding = s.encoding, effects = s.effects,
         calibrationId = s.calibrationId, calibrationOffsetDb = s.calibrationOffsetDb, calibrated = s.calibrated,
-        eventThresholdDb = s.eventThresholdDb, eventMinLevelDb = s.eventMinLevelDb,
+        eventExcessDb = s.eventExcessDb, localFloorWindowSeconds = s.localFloorWindowSeconds, eventMinLevelDb = s.eventMinLevelDb,
+        windLfShareMin = s.windLfShareMin, windFlutterMinDb = s.windFlutterMinDb,
         classifierEnabled = s.classifierEnabled, classifierNormalize = s.classifierNormalize,
         classifierIntervalSeconds = s.classifierIntervalSeconds,
         clips = settings.clips, continuous = settings.continuous, clipEvery = settings.clipEvery, maxBytes = settings.maxBytes,

@@ -19,7 +19,11 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import ch.stadtlaerm.app.container
+import ch.stadtlaerm.dsp.WindRule
 import ch.stadtlaerm.dsp.classify.CategoryMapper
 import java.io.File
 import java.time.Instant
@@ -62,6 +67,8 @@ object Fmt {
 fun categoryName(context: Context, id: String?): String = when (id) {
     null -> "–"
     "n/a" -> "nicht klassifiziert (aus)"
+    // Not a classifier category: the detector's wind flag (v0.4.0).
+    WindRule.CATEGORY -> WindRule.NAME_DE
     else -> try { context.container.categoryMapper.nameDe(id) } catch (_: Exception) { id }
 }
 
@@ -74,6 +81,7 @@ fun categoryColor(id: String?): Color = when (id) {
     "voices" -> Color(0xFF3E8E41)
     "music" -> Color(0xFF30638E)
     CategoryMapper.UNCLASSIFIED -> Color(0xFF9E9E9E)
+    WindRule.CATEGORY -> Color(0xFFB0BEC5)
     else -> Color(0xFFBDBDBD)
 }
 
@@ -87,6 +95,18 @@ fun SectionCard(title: String? = null, modifier: Modifier = Modifier, content: @
             if (title != null) Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             content()
         }
+    }
+}
+
+/** The one-time notice about the migrated event threshold (v0.4.0), until «OK». */
+@Composable
+fun MigrationNoticeCard() {
+    val c = LocalContext.current.container
+    val notice by c.settings.migrationNotice.collectAsStateWithLifecycle()
+    val text = notice ?: return
+    SectionCard("Neue Ereigniserkennung") {
+        Text(text, style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = { c.settings.dismissMigrationNotice() }) { Text("OK") }
     }
 }
 

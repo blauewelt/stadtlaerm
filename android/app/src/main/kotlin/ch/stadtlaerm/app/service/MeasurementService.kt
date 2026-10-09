@@ -29,6 +29,7 @@ import ch.stadtlaerm.app.container
 import ch.stadtlaerm.app.ui.MainActivity
 import ch.stadtlaerm.dsp.Acoustics
 import ch.stadtlaerm.dsp.EngineConfig
+import ch.stadtlaerm.dsp.EventFeatures
 import ch.stadtlaerm.dsp.LafTick
 import ch.stadtlaerm.dsp.MeasurementEngine
 import ch.stadtlaerm.dsp.MinuteRecord
@@ -71,6 +72,8 @@ data class LiveState(
     val lafDb: Double? = null,
     val laeq60sDb: Double? = null,
     val backgroundDb: Double? = null,
+    /** Local floor (L90 over the trailing local window), the event reference since v0.4.0. */
+    val localFloorDb: Double? = null,
     val dominantCategory: String? = null,
     val dominantScore: Float = 0f,
     val topLabels: List<LabelScore> = emptyList(),
@@ -193,7 +196,10 @@ class MeasurementService : Service() {
                     calibrated = cal.calibrated,
                     calibrationId = cal.id,
                     audioSource = source,
-                    eventThresholdDb = settings.eventThresholdDb,
+                    eventExcessDb = settings.eventExcessDb,
+                    localFloorWindowSeconds = settings.localFloorWindowSeconds.toDouble(),
+                    windLfShareMin = settings.windLfShareMin,
+                    windFlutterMinDb = settings.windFlutterMinDb,
                     eventMinLevelDb = settings.eventMinLevelDb,
                     classifierEnabled = settings.classifierEnabled,
                     classifierIntervalSeconds = settings.classifierIntervalSeconds.toDouble(),
@@ -232,8 +238,11 @@ class MeasurementService : Service() {
                         AudioTapSession(
                             startedAtMs = System.currentTimeMillis(), audioSource = info.source, encoding = info.encoding,
                             effects = info.effects, calibrationId = cal.id, calibrationOffsetDb = cal.offsetDb,
-                            calibrated = cal.calibrated, eventThresholdDb = config.eventThresholdDb,
-                            eventMinLevelDb = config.eventMinLevelDb, classifierEnabled = settings.classifierEnabled,
+                            calibrated = cal.calibrated, eventExcessDb = config.eventExcessDb,
+                            localFloorWindowSeconds = config.localFloorWindowSeconds,
+                            eventMinLevelDb = config.eventMinLevelDb,
+                            windLfShareMin = config.windLfShareMin, windFlutterMinDb = config.windFlutterMinDb,
+                            classifierEnabled = settings.classifierEnabled,
                             classifierNormalize = settings.classifierNormalize,
                             classifierIntervalSeconds = config.classifierIntervalSeconds,
                         )
@@ -314,6 +323,7 @@ class MeasurementService : Service() {
                 it.copy(
                     laeq60sDb = second.laeqRunning60sDb.takeUnless { v -> v.isNaN() },
                     backgroundDb = second.backgroundDb.takeUnless { v -> v.isNaN() },
+                    localFloorDb = second.localFloorDb.takeUnless { v -> v.isNaN() },
                 )
             }
             val now = System.currentTimeMillis()
@@ -329,7 +339,8 @@ class MeasurementService : Service() {
 
         override fun onMinute(minute: MinuteRecord) {
             val l = container.live
-            l.update { it.copy(lastMinute = minute) }
+            // A minute held for a long event can arrive after a later one: show the newest.
+            l.update { if ((it.lastMinute?.startEpochMs ?: Long.MIN_VALUE) <= minute.startEpochMs) it.copy(lastMinute = minute) else it }
             persist("minute") { container.measurements.insert(minute) }
         }
 
@@ -350,7 +361,8 @@ class MeasurementService : Service() {
         override fun onEventCandidate(startSample: Long) = tap.onEventStarted(startSample)
         override fun onEventConfirmed(startSample: Long) = tap.onEventConfirmed(startSample)
         override fun onEventDiscarded(startSample: Long) = tap.onEventDiscarded(startSample)
-        override fun onEventClosed(startSample: Long, endSample: Long) = tap.onEventEnded(startSample, endSample)
+        override fun onEventClosed(startSample: Long, endSample: Long, features: EventFeatures) =
+            tap.onEventEnded(startSample, endSample, features)
         override fun onClassifierResult(result: ClassifierResult) = tap.onClassifierResult(result.endEpochMs, result)
 
         override fun onClassification(endEpochMs: Long, decision: CategoryDecision, top: List<LabelScore>) {

@@ -25,6 +25,8 @@ object Csv {
             // v0.3.2: original values of minutes re-evaluated with a later calibration (appended).
             "orig_laeq_db", "orig_lafmax_db", "orig_lafmin_db", "orig_l1_db", "orig_l10_db", "orig_l50_db", "orig_l90_db",
             "recalibrated_from_id", "recalibration_offset_db",
+            // v0.4.0 (appended): median local floor of the minute and its wind events.
+            "local_floor_db", "wind_event_count",
         )
         sb.append(header.joinToString(",")).append("\n")
         for (r in records) {
@@ -38,10 +40,26 @@ object Csv {
             ) + r.original.let { o ->
                 if (o == null) List(7) { "" }
                 else listOf(num(o.laeqDb), num(o.lafMaxDb), num(o.lafMinDb), num(o.l1Db), num(o.l10Db), num(o.l50Db), num(o.l90Db))
-            } + listOf(field(r.recalibratedFromId), r.recalibrationOffsetDb?.let { num(it, 2) } ?: "")
+            } + listOf(field(r.recalibratedFromId), r.recalibrationOffsetDb?.let { num(it, 2) } ?: "") +
+                listOf(num(r.localFloorDb), r.windEventCount.toString())
             sb.append(row.joinToString(",")).append("\n")
         }
         return sb.toString()
+    }
+
+    /** The v0.4.0 event feature columns (appended to the events CSV, also used by the replay dump). */
+    val EVENT_FEATURE_COLUMNS = listOf(
+        "local_floor_db", "excess_db", "rise_s", "decay_s", "jaggedness", "mid_band_rise_db", "lf_share", "lf_flutter_db",
+        "wind", "shape",
+    )
+
+    /** The feature columns of [e]; empty for events before v0.4.0 (wind = false). */
+    fun featureFields(e: NoiseEvent): List<String> {
+        val f = e.features ?: return List(EVENT_FEATURE_COLUMNS.size - 2) { "" } + listOf("false", "")
+        return listOf(
+            num(f.localFloorDb), num(f.excessDb), num(f.riseS, 3), num(f.decayS, 3), num(f.jaggedness, 3),
+            num(f.midBandRiseDb), num(f.lfShare, 3), num(f.lfFlutterDb, 2), f.wind.toString(), field(f.shape),
+        )
     }
 
     fun events(events: List<NoiseEvent>): String {
@@ -54,7 +72,7 @@ object Csv {
                 "classifier_frames", "calibration_id", "audio_source", "calibrated",
                 // v0.3.2 (appended): see minutes().
                 "orig_lafmax_db", "orig_sel_db", "orig_background_db", "recalibrated_from_id", "recalibration_offset_db",
-            ).joinToString(",")
+            ).plus(EVENT_FEATURE_COLUMNS).joinToString(",")
         ).append("\n")
         for (e in events) {
             val labels = (0 until 3).flatMap { i ->
@@ -69,7 +87,7 @@ object Csv {
                 e.calibrated.toString(),
             ) + e.original.let { o ->
                 if (o == null) List(3) { "" } else listOf(num(o.lafMaxDb), num(o.selDb), num(o.backgroundDb))
-            } + listOf(field(e.recalibratedFromId), e.recalibrationOffsetDb?.let { num(it, 2) } ?: "")
+            } + listOf(field(e.recalibratedFromId), e.recalibrationOffsetDb?.let { num(it, 2) } ?: "") + featureFields(e)
             sb.append(row.joinToString(",")).append("\n")
         }
         return sb.toString()

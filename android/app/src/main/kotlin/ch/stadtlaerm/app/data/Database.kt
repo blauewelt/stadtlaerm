@@ -12,6 +12,7 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import ch.stadtlaerm.dsp.EventFeatures
 import ch.stadtlaerm.dsp.EventLevels
 import ch.stadtlaerm.dsp.MinuteLevels
 import ch.stadtlaerm.dsp.MinuteRecord
@@ -71,6 +72,9 @@ data class MinuteEntity(
     @ColumnInfo(name = "recalibrated_from_id") val recalibratedFromId: String? = null,
     /** Offset the orig_* values were measured with. */
     @ColumnInfo(name = "recalibration_offset_db") val recalibrationOffsetDb: Double? = null,
+    // v5 (v0.4.0, detector v2): median local floor of the minute; events flagged as wind (not in eventCount).
+    @ColumnInfo(name = "local_floor_db") val localFloorDb: Double? = null,
+    @ColumnInfo(name = "wind_event_count", defaultValue = "0") val windEventCount: Int = 0,
 )
 
 @Entity(tableName = "events", indices = [Index("startEpochMs")])
@@ -100,6 +104,18 @@ data class EventEntity(
     @ColumnInfo(name = "orig_background_db") val origBackgroundDb: Double? = null,
     @ColumnInfo(name = "recalibrated_from_id") val recalibratedFromId: String? = null,
     @ColumnInfo(name = "recalibration_offset_db") val recalibrationOffsetDb: Double? = null,
+    // v5 (v0.4.0, detector v2): features of the event; NULL (wind 0) for events recorded before.
+    // A non-NULL shape marks an event with features.
+    @ColumnInfo(name = "local_floor_db") val localFloorDb: Double? = null,
+    @ColumnInfo(name = "excess_db") val excessDb: Double? = null,
+    @ColumnInfo(name = "rise_s") val riseS: Double? = null,
+    @ColumnInfo(name = "decay_s") val decayS: Double? = null,
+    @ColumnInfo(name = "jaggedness") val jaggedness: Double? = null,
+    @ColumnInfo(name = "mid_band_rise_db") val midBandRiseDb: Double? = null,
+    @ColumnInfo(name = "lf_share") val lfShare: Double? = null,
+    @ColumnInfo(name = "lf_flutter_db") val lfFlutterDb: Double? = null,
+    @ColumnInfo(name = "wind", defaultValue = "0") val wind: Boolean = false,
+    @ColumnInfo(name = "shape") val shape: String? = null,
 )
 
 @Entity(tableName = "calibrations", indices = [Index(value = ["deviceModel", "audioSource"])])
@@ -215,7 +231,7 @@ interface CalibrationDao {
     suspend fun byId(id: Long): CalibrationEntity?
 }
 
-@Database(entities = [MinuteEntity::class, EventEntity::class, CalibrationEntity::class], version = 4, exportSchema = false)
+@Database(entities = [MinuteEntity::class, EventEntity::class, CalibrationEntity::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun measurements(): MeasurementDao
     abstract fun calibrations(): CalibrationDao
@@ -223,7 +239,7 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "stadtlaerm.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }
@@ -244,6 +260,7 @@ object Mappers {
         origLafMinDb = original?.lafMinDb?.orNull(), origL1Db = original?.l1Db?.orNull(),
         origL10Db = original?.l10Db?.orNull(), origL50Db = original?.l50Db?.orNull(), origL90Db = original?.l90Db?.orNull(),
         recalibratedFromId = recalibratedFromId, recalibrationOffsetDb = recalibrationOffsetDb,
+        localFloorDb = localFloorDb.orNull(), windEventCount = windEventCount,
     )
 
     private fun Double.orNull(): Double? = takeUnless { it.isNaN() || it.isInfinite() }
@@ -263,6 +280,7 @@ object Mappers {
             )
         },
         recalibratedFromId = recalibratedFromId, recalibrationOffsetDb = recalibrationOffsetDb,
+        localFloorDb = localFloorDb.orNaN(), windEventCount = windEventCount,
     )
 
     fun NoiseEvent.toEntity() = EventEntity(
@@ -277,6 +295,10 @@ object Mappers {
         origLafMaxDb = original?.lafMaxDb?.orNull(), origSelDb = original?.selDb?.orNull(),
         origBackgroundDb = original?.backgroundDb?.orNull(),
         recalibratedFromId = recalibratedFromId, recalibrationOffsetDb = recalibrationOffsetDb,
+        localFloorDb = features?.localFloorDb?.orNull(), excessDb = features?.excessDb?.orNull(),
+        riseS = features?.riseS?.orNull(), decayS = features?.decayS?.orNull(), jaggedness = features?.jaggedness?.orNull(),
+        midBandRiseDb = features?.midBandRiseDb?.orNull(), lfShare = features?.lfShare?.orNull(),
+        lfFlutterDb = features?.lfFlutterDb?.orNull(), wind = features?.wind == true, shape = features?.shape,
     )
 
     fun EventEntity.toEvent() = NoiseEvent(
@@ -290,5 +312,11 @@ object Mappers {
         minLevelDb = minLevelDb.orNaN(),
         original = recalibratedFromId?.let { EventLevels(origLafMaxDb.orNaN(), origSelDb.orNaN(), origBackgroundDb.orNaN()) },
         recalibratedFromId = recalibratedFromId, recalibrationOffsetDb = recalibrationOffsetDb,
+        features = shape?.let {
+            EventFeatures(
+                localFloorDb.orNaN(), excessDb.orNaN(), riseS.orNaN(), decayS.orNaN(), jaggedness.orNaN(),
+                midBandRiseDb.orNaN(), lfShare.orNaN(), lfFlutterDb.orNaN(), wind, it,
+            )
+        },
     )
 }

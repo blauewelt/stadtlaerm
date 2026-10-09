@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import ch.stadtlaerm.dsp.EventShape
 import kotlin.math.abs
 
 /** Pixel sizes of the chart, resolved from dp once per density. */
@@ -42,6 +43,9 @@ private class ChartDims(d: androidx.compose.ui.unit.Density) {
     // Other events are smaller so that hundreds of quiet pass-bys do not bury the LAeq line.
     val otherRadius = with(d) { 3.dp.toPx() } // 6 dp dot
     val otherRing = with(d) { 1.5.dp.toPx() }
+    // Wind events: small hollow rings (excluded from every count).
+    val windRadius = with(d) { 2.5.dp.toPx() }
+    val windStroke = with(d) { 1.25.dp.toPx() }
     val touchRadius = with(d) { 16.dp.toPx() }
     val line = with(d) { 2.dp.toPx() }
     val grid = with(d) { 0.75.dp.toPx() }
@@ -310,8 +314,13 @@ private fun DrawScope.drawChart(l: ChartLayout, c: ChartColors, d: ChartDims) {
     for (path in l.linePaths) {
         drawPath(path, c.series1, style = Stroke(width = d.line, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
-    // Events: others below, highlighted on top; each with a ring in the card surface colour.
-    // Events with an audio clip (Labor build) get a thin outer ring; the fill keeps its meaning.
+    // Events: wind (hollow, smallest) at the bottom, then the others, highlighted on top; each
+    // filled dot with a ring in the card surface colour. Events with an audio clip (Labor build)
+    // get a thin outer ring; the fill keeps its meaning.
+    for (dot in g.windDots) {
+        drawCircle(c.other, d.windRadius, Offset(dot.x, dot.y), style = Stroke(d.windStroke))
+        if (dot.hasClipAccent) drawClipAccent(dot, d.windRadius + d.windStroke, c, d)
+    }
     for (dot in g.otherDots) {
         drawCircle(c.surface, d.otherRadius + d.otherRing, Offset(dot.x, dot.y))
         drawCircle(c.other, d.otherRadius, Offset(dot.x, dot.y))
@@ -390,11 +399,13 @@ private fun DrawScope.drawSelection(l: ChartLayout, s: Selection, tip: Tip, c: C
         }
         is Selection.Event -> {
             val y = g.yOf(s.event.lafMaxDb)
-            val r = if (s.highlighted) d.dotRadius else d.otherRadius
-            val ring = if (s.highlighted) d.ring else d.otherRing
+            val wind = s.event.wind
+            val r = if (s.highlighted) d.dotRadius else if (wind) d.windRadius else d.otherRadius
+            val ring = if (s.highlighted) d.ring else if (wind) d.windStroke else d.otherRing
             drawCircle(c.text, r + ring + d.grid * 2, Offset(x, y), style = Stroke(d.grid * 2))
             drawCircle(c.surface, r + ring, Offset(x, y))
-            drawCircle(if (s.highlighted) c.series2 else c.other, r, Offset(x, y))
+            if (wind) drawCircle(c.other, r, Offset(x, y), style = Stroke(d.windStroke))
+            else drawCircle(if (s.highlighted) c.series2 else c.other, r, Offset(x, y))
             if (s.clipRef != null) {
                 drawCircle(c.clipAccent, r + ring + d.clipAccentGap + d.clipAccentStroke / 2, Offset(x, y), style = Stroke(d.clipAccentStroke))
             }
@@ -416,6 +427,9 @@ private fun DrawScope.drawSelection(l: ChartLayout, s: Selection, tip: Tip, c: C
         drawText(b, topLeft = Offset(br.left + d.buttonPadH, br.top + d.buttonPadV))
     }
 }
+
+/** Legend and tooltip name of wind events (detector v2: excluded from every count). */
+const val WIND_LEGEND = "Wind (ausgeschlossen)"
 
 /** Label of the tooltip button that plays an event's audio clip (Labor build). */
 const val PLAY_CLIP_LABEL = "Abspielen"
@@ -445,11 +459,24 @@ fun tooltipLines(s: Selection, model: ChartModel): List<String> {
         }
         is Selection.Event -> {
             val e = s.event
+            val f = e.features
             buildList {
-                add("${fmt.hms(e.startEpochMs)} · ${ChartCategories.name(e.dominantCategory)}")
+                add("${fmt.hms(e.startEpochMs)} · ${if (e.wind) WIND_LEGEND else ChartCategories.name(e.dominantCategory)}")
                 add("LAFmax ${ChartFmt.db(e.lafMaxDb)} dB(A)")
                 add("Dauer ${ChartFmt.duration(e.durationSeconds)}")
-                add("Hintergrund ${ChartFmt.db(e.backgroundDb)} dB(A)")
+                if (f == null) {
+                    add("Hintergrund ${ChartFmt.db(e.backgroundDb)} dB(A)")
+                } else {
+                    add("Lokaler Hintergrund ${ChartFmt.db(f.localFloorDb)} dB(A) (+${ChartFmt.db(f.excessDb)} dB)")
+                    if (e.wind) {
+                        add("Tieftonanteil ${ChartFmt.percent(f.lfShare)} · Flattern ${ChartFmt.db(f.lfFlutterDb)} dB")
+                    } else {
+                        add(
+                            "Verlauf: ${EventShape.nameDe(f.shape)}" +
+                                (if (f.riseS.isNaN()) "" else " · Anstieg ${ChartFmt.duration(f.riseS)}"),
+                        )
+                    }
+                }
                 e.topLabels.firstOrNull()?.let { add("Erkannt: ${it.label}") }
                 if (!e.calibrated) add("unkalibriert") else if (e.recalibrated) add(RECALIBRATED)
             }

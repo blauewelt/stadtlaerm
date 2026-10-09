@@ -30,6 +30,8 @@ data class SecondResult(
     val backgroundDb: Double,
     /** Fraction of this second's 125 ms ticks that were valid (levels above use only those). */
     val validFraction: Double = 1.0,
+    /** Local floor (L90 of LAF over the trailing local window, default 30 s); NaN until enough history. */
+    val localFloorDb: Double = Double.NaN,
 )
 
 /**
@@ -50,6 +52,10 @@ data class MinuteRecord(
     val l10Db: Double,
     val l50Db: Double,
     val l90Db: Double,
+    /**
+     * Events that started in this minute and passed the floor in force when measured; since
+     * v0.4.0 without wind events (those are in [windEventCount]).
+     */
     val eventCount: Int,
     /** Bucket with the largest time share (incl. "unclassified"), null if the classifier was off. */
     val dominantCategory: String?,
@@ -82,6 +88,13 @@ data class MinuteRecord(
     val recalibratedFromId: String? = null,
     /** Offset the [original] levels were measured with; null if never re-evaluated. */
     val recalibrationOffsetDb: Double? = null,
+    /**
+     * Median over the minute's valid 125 ms ticks of the local floor (the «hum», L90 of LAF over the
+     * trailing local window); NaN without valid ticks or before v0.4.0.
+     */
+    val localFloorDb: Double = Double.NaN,
+    /** Events flagged as wind on the microphone that started in this minute (not in [eventCount]). */
+    val windEventCount: Int = 0,
 ) {
     /** Fraction of the minute's duration with valid audio (0…1). */
     val coverage: Double get() = if (durationSeconds > 0) (validSeconds / durationSeconds).coerceIn(0.0, 1.0) else 0.0
@@ -122,9 +135,11 @@ data class NoiseEvent(
     val lafMaxDb: Double,
     /** Sound exposure level LAE re 1 s. */
     val selDb: Double,
+    /** 5-min background (L90 of LAF over the trailing 5 min) at the start; not used for detection since v0.4.0. */
     val backgroundDb: Double,
+    /** Start threshold in force: since v0.4.0 the excess over the local floor, before over the background (dB). */
     val thresholdDb: Double,
-    /** Category id, "unclassified", or null if the classifier was off. */
+    /** Category id, "unclassified", "wind" (since v0.4.0, see [wind]), or null if the classifier was off. */
     val dominantCategory: String?,
     val dominantScore: Float,
     val topLabels: List<LabelScore>,
@@ -143,9 +158,14 @@ data class NoiseEvent(
     val recalibratedFromId: String? = null,
     /** Offset of the [original] levels; null if never re-evaluated. */
     val recalibrationOffsetDb: Double? = null,
+    /** Detector v2 features (local floor, excess, shape, wind); null for events before v0.4.0. */
+    val features: EventFeatures? = null,
 ) {
     /** True if the levels were re-evaluated with a calibration made after the measurement. */
     val recalibrated: Boolean get() = recalibratedFromId != null
+
+    /** Wind on the microphone: excluded from event counts, events/h and the category highlights. */
+    val wind: Boolean get() = features?.wind == true
 
     /** The level fields of this event. */
     val levels: EventLevels get() = EventLevels(lafMaxDb, selDb, backgroundDb)

@@ -1,6 +1,9 @@
 package ch.stadtlaerm.chart
 
+import ch.stadtlaerm.dsp.EventFeatures
+import ch.stadtlaerm.dsp.EventShape
 import ch.stadtlaerm.dsp.Iso
+import ch.stadtlaerm.dsp.WindRule
 import ch.stadtlaerm.dsp.MinuteRecord
 import ch.stadtlaerm.dsp.NoiseEvent
 import ch.stadtlaerm.dsp.classify.LabelScore
@@ -22,7 +25,11 @@ object SyntheticData {
 
     fun ms(dt: LocalDateTime): Long = dt.atZone(zone).toInstant().toEpochMilli()
 
-    data class Ev(val at: LocalDateTime, val lafMax: Double, val category: String, val durationS: Double = 3.0, val label: String? = null)
+    data class Ev(
+        val at: LocalDateTime, val lafMax: Double, val category: String, val durationS: Double = 3.0, val label: String? = null,
+        /** Wind on the microphone (detector v2): drawn as a hollow dot, counted nowhere. */
+        val wind: Boolean = false,
+    )
 
     private val topLabel = mapOf(
         "loud_vehicle" to "Motorcycle", "road_traffic" to "Car passing by", "rail_tram" to "Rail transport",
@@ -36,9 +43,10 @@ object SyntheticData {
         return NoiseEvent(
             startEpochMs = t, startIso = Iso.format(t, zone, millis = true), durationSeconds = e.durationS,
             lafMaxDb = e.lafMax, selDb = e.lafMax + 10 * log10(e.durationS) - 3, backgroundDb = background, thresholdDb = 10.0,
-            dominantCategory = e.category, dominantScore = 0.6f,
+            dominantCategory = if (e.wind) WindRule.CATEGORY else e.category, dominantScore = if (e.wind) 0f else 0.6f,
             topLabels = listOfNotNull(label?.let { LabelScore(it, 0.6f) }), classifierFrames = 3,
             calibrationId = null, audioSource = "UNPROCESSED", calibrated = calibrated, minLevelDb = 30.0,
+            features = if (e.wind) EventFeatures(background + 2, e.lafMax - background - 2, 0.25, 0.6, 0.45, 2.0, 0.97, 4.2, true, EventShape.IMPULSE) else null,
         )
     }
 
@@ -109,6 +117,11 @@ object SyntheticData {
         Ev(fri(5, 20), 63.5, "rail_tram", 9.0),
         // "Aircraft at 06:00": the night window is [22:00, 06:00), so it starts just before.
         Ev(fri(5, 59, 20), 67.0, "aircraft", 25.0),
+        // A wind episode around 02:10 (not counted: 18 events stay 18).
+        Ev(fri(2, 5, 10), 58.0, "unclassified", 0.6, wind = true),
+        Ev(fri(2, 7, 40), 63.0, "unclassified", 0.9, wind = true),
+        Ev(fri(2, 9, 5), 55.0, "unclassified", 0.5, wind = true),
+        Ev(fri(2, 12, 30), 61.0, "unclassified", 1.2, wind = true),
     )
 
     /** L90 38–42 until ~02:30, then rising to 48 by 05:30. */

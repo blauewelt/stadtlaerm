@@ -15,14 +15,32 @@ data class EngineConfig(
     val calibrated: Boolean = false,
     val calibrationId: Long? = null,
     val audioSource: String = "unknown",
-    val eventThresholdDb: Double = 10.0,
+    /**
+     * Event start: LAF ≥ local floor + this (dB). Replaces the v0.3 threshold over the 5-min
+     * background (default 10 dB); see the settings migration in the app.
+     */
+    val eventExcessDb: Double = DEFAULT_EVENT_EXCESS_DB,
     val eventHysteresisDb: Double = 3.0,
     val eventMinDurationSeconds: Double = 0.5,
     val eventMaxDurationSeconds: Double = 300.0,
     /** Events are only kept if their LAFmax reaches this absolute level (dB, with the offset). */
     val eventMinLevelDb: Double = DEFAULT_EVENT_MIN_LEVEL_DB,
+    /** The 5-min background (L90), kept for continuity (stored with events, shown live); not used for detection. */
     val backgroundWindowSeconds: Double = 300.0,
     val backgroundMinHistorySeconds: Double = 30.0,
+    /** Local floor = L90 of LAF over this trailing window (s, the app allows 10–60); the event reference. */
+    val localFloorWindowSeconds: Double = DEFAULT_LOCAL_FLOOR_WINDOW_SECONDS,
+    /** Detection starts once the local floor has this much history (s). */
+    val localFloorMinHistorySeconds: Double = 5.0,
+    /** Wind on the microphone: unweighted 20–200 Hz energy share at least this … */
+    val windLfShareMin: Double = WindRule.DEFAULT_LF_SHARE,
+    /** … or a low-frequency flutter of at least this (dB). */
+    val windFlutterMinDb: Double = WindRule.DEFAULT_FLUTTER_DB,
+    /**
+     * After an event ends, its features wait at most this long (s) for the level to fall to 10 % of
+     * the excess (for the decay time); the event is reported then.
+     */
+    val eventTailSeconds: Double = 5.0,
     val classifierEnabled: Boolean = true,
     /** Classify once per second by default (short motorbike pass-bys must be covered). */
     val classifierIntervalSeconds: Double = DEFAULT_CLASSIFIER_INTERVAL_SECONDS,
@@ -37,12 +55,17 @@ data class EngineConfig(
     init {
         require(sampleRate % 8 == 0) { "sample rate must be divisible by 8 (125 ms ticks)" }
         require(sampleRate % 3 == 0) { "sample rate must be divisible by 3 (classifier decimation)" }
+        require(localFloorWindowSeconds > 0 && localFloorMinHistorySeconds > 0)
+        require(eventTailSeconds >= 0)
     }
 
     companion object {
         const val DEFAULT_CLASSIFIER_INTERVAL_SECONDS = 1.0
         /** Filters noise at the phone itself (typing, breathing); quiet pass-bys (≈ 35–40 dB) stay. */
         const val DEFAULT_EVENT_MIN_LEVEL_DB = 30.0
+        /** Vehicle passes: ≥ 6.5 dB over the local floor (p10 6.9, median 9.1 in one recorded night). */
+        const val DEFAULT_EVENT_EXCESS_DB = 6.5
+        const val DEFAULT_LOCAL_FLOOR_WINDOW_SECONDS = 30.0
     }
 }
 
@@ -103,8 +126,12 @@ class MeasurementEngine(
         fun onEventConfirmed(startSample: Long) {}
         /** The candidate starting at [startSample] ended without being confirmed. */
         fun onEventDiscarded(startSample: Long) {}
-        /** The confirmed event [startSample, endSample) ended; [onEventEmitted] follows (≤ 3 s later). */
-        fun onEventClosed(startSample: Long, endSample: Long) {}
+        /**
+         * The confirmed event [startSample, endSample) ended and its [features] are known. Reported
+         * after the event's tail (≤ [EngineConfig.eventTailSeconds] after [endSample], see
+         * [EventFeatureTracker]); [onEventEmitted] follows (normally at once).
+         */
+        fun onEventClosed(startSample: Long, endSample: Long, features: EventFeatures) {}
         /** The event with its input-sample span; by default forwards to [onEvent]. */
         fun onEventEmitted(event: NoiseEvent, startSample: Long, endSample: Long) = onEvent(event)
         /**
@@ -155,6 +182,11 @@ class MeasurementEngine(
     private var tickSumA = 0.0
     private var tickSumZ = 0.0
     private var tickMaxY = 0.0
+    // Event features (detector v2): A-weighted mid band, unweighted 20–200 Hz and 20 Hz–8 kHz.
+    private val featureFilters = FeatureFilters(fs)
+    private var tickSumBand = 0.0
+    private var tickSumLow = 0.0
+    private var tickSumTotal = 0.0
 
     // Second accumulators (valid ticks only, except the tick counter)
     private var secTicks = 0
@@ -173,7 +205,9 @@ class MeasurementEngine(
     private var minuteMaxY = 0.0
     private var minuteLafs = DoubleArray(1024)
     private var minuteLafCount = 0
-    private var minuteEvents = 0
+    /** Local floor of every valid tick of the minute (for its median). */
+    private var minuteFloors = DoubleArray(1024)
+    private var minuteFloorCount = 0
     private var minuteClockCorrections = 0
     private val bucketIds: List<String> = mapper?.bucketIds ?: emptyList()
     private val minuteBucketCounts = IntArray(bucketIds.size)
@@ -181,21 +215,48 @@ class MeasurementEngine(
     private var recording = false
 
     /**
-     * A closed minute whose last seconds contained a still-unconfirmed event candidate: it is
-     * emitted once the candidate is confirmed (and counted here, where it started) or discarded.
+     * Event counts of a minute. Events are counted in the minute in which they started, as bursts
+     * or as wind; that is only known once the event is complete (end + tail). A closed minute with
+     * undecided events is held ([record] set) and emitted when the last of them is decided or
+     * discarded — so minutes can be emitted out of order while a very long event runs.
      */
-    private var heldMinute: MinuteRecord? = null
+    private class MinuteCounts {
+        var events = 0
+        var wind = 0
+        var undecided = 0
+        var record: MinuteRecord? = null
+    }
+
+    private var curMinute = MinuteCounts()
+    private val heldMinutes = ArrayList<MinuteCounts>()
 
     private val background = BackgroundEstimator(
         config.backgroundWindowSeconds, config.backgroundMinHistorySeconds, 0.125,
     )
+    private val localFloor = LocalFloorEstimator(config.localFloorWindowSeconds, config.localFloorMinHistorySeconds, 0.125)
+    private val windRule = WindRule(config.windLfShareMin, config.windFlutterMinDb)
+    private val tailTicks = kotlin.math.ceil(config.eventTailSeconds * 8 - 1e-9).toInt()
+    private val tracker = EventFeatureTracker(
+        capacityTicks = 80 + (config.eventMaxDurationSeconds * 8).toInt() + tailTicks + 16, tickSeconds = 0.125, preTicks = 80,
+    )
+    /** Index (in [tracker]) of the tick being evaluated. */
+    private var currentTickIndex = -1L
 
     // Event classification bookkeeping
-    private class EventAcc(val startSample: Long, labelCount: Int) {
+    private class EventAcc(val startSample: Long, labelCount: Int, val minute: MinuteCounts, val startTick: Long) {
         val sum = FloatArray(labelCount)
         var frames = 0
         var detected: DetectedEvent? = null
+        /** Tick index after the event's last tick (exclusive). */
+        var endTick = -1L
+        /** Highest LAF tick value of the event (for the tail's 10 % level). */
+        var curvePeakDb = Double.NaN
+        /** Set at the end of the tail; the event is emitted only then. */
+        var features: EventFeatures? = null
     }
+
+    /** The closed event whose tail (decay) is still being followed, if any. */
+    private var tailAcc: EventAcc? = null
 
     // Recent tick levels (diagnostics only: LAF of classifier windows in onClassifierResult).
     private val recentTicks = 96 // 12 s
@@ -209,7 +270,7 @@ class MeasurementEngine(
     private val labelCount = mapper?.labels?.size ?: 0
 
     private val detector = EventDetector(
-        thresholdDb = config.eventThresholdDb,
+        excessDb = config.eventExcessDb,
         hysteresisDb = config.eventHysteresisDb,
         minDurationSeconds = config.eventMinDurationSeconds,
         maxDurationSeconds = config.eventMaxDurationSeconds,
@@ -218,45 +279,77 @@ class MeasurementEngine(
         sampleRate = fs,
         listener = object : EventDetector.Listener {
             override fun onCandidateStart(startSample: Long) {
-                activeAcc = EventAcc(startSample, labelCount)
+                // The previous event's tail ends where the next candidate starts.
+                if (tailAcc != null) finishTail(currentTickIndex)
+                activeAcc = EventAcc(startSample, labelCount, curMinute, currentTickIndex)
+                curMinute.undecided++
                 listener.onEventCandidate(startSample)
             }
 
             override fun onConfirmed(startSample: Long) {
-                val held = heldMinute
-                if (held != null) {
-                    // A minute is only held for the candidate that started in it: count it there.
-                    heldMinute = null
-                    listener.onMinute(held.copy(eventCount = held.eventCount + 1))
-                } else if (recording) {
-                    minuteEvents++
-                }
                 listener.onEventConfirmed(startSample)
             }
 
             override fun onDiscarded(startSample: Long) {
+                activeAcc?.let { acc ->
+                    acc.minute.undecided--
+                    releaseIfDecided(acc.minute)
+                }
                 activeAcc = null
-                releaseHeldMinute()
                 listener.onEventDiscarded(startSample)
             }
 
             override fun onClosed(event: DetectedEvent) {
-                listener.onEventClosed(event.startSample, event.endSample)
-                val acc = activeAcc ?: EventAcc(event.startSample, labelCount)
+                val acc = activeAcc ?: EventAcc(event.startSample, labelCount, curMinute, currentTickIndex).also { curMinute.undecided++ }
                 activeAcc = null
                 acc.detected = event
-                if (!classifierActive || acc.frames > 0) {
-                    // Classifier results overlapping the event are already attached: emit now.
-                    emitEvent(acc)
-                } else {
-                    // None overlapped (short event between two classifications): request one
-                    // classification right now, which covers the last 0.975 s of the event.
-                    pending.add(acc)
-                    forceClassification = true
-                }
+                acc.endTick = acc.startTick + Math.round(event.durationSeconds * 8)
+                var peak = Double.NEGATIVE_INFINITY
+                for (i in acc.startTick until acc.endTick) { val v = tracker.lafAt(i); if (v > peak) peak = v }
+                acc.curvePeakDb = peak
+                pending.add(acc)
+                // No classifier result overlapped (short event between two classifications):
+                // request one right now, which covers the last 0.975 s of the event.
+                if (classifierActive && acc.frames == 0) forceClassification = true
+                // The features wait for the decay after the end (the tail); see updateTail().
+                tailAcc = acc
             }
         },
     )
+
+    /** Ends the running tail at tick [tailEnd] (exclusive): features, counts, then emission. */
+    private fun finishTail(tailEnd: Long) {
+        val acc = tailAcc ?: return
+        tailAcc = null
+        val ev = acc.detected!!
+        val f = tracker.compute(
+            acc.startTick, acc.endTick, maxOf(tailEnd, acc.endTick), ev.localFloorDb, ev.lafMaxDb, ev.durationSeconds, windRule,
+        )
+        acc.features = f
+        if (f.wind) acc.minute.wind++ else acc.minute.events++
+        acc.minute.undecided--
+        listener.onEventClosed(ev.startSample, ev.endSample, f)
+        tryEmit(acc, force = false)
+        releaseIfDecided(acc.minute)
+    }
+
+    /** After each valid tick: the tail ends when LAF is back at 10 % of the excess, or after the maximum. */
+    private fun updateTail() {
+        val acc = tailAcc ?: return
+        if (currentTickIndex < acc.endTick) return
+        val floor = acc.detected!!.localFloorDb
+        val lo = floor + 0.1 * (acc.curvePeakDb - floor)
+        val tail = currentTickIndex + 1 - acc.endTick
+        if (tracker.lafAt(currentTickIndex) <= lo || tail >= tailTicks) finishTail(currentTickIndex + 1)
+    }
+
+    private fun releaseIfDecided(m: MinuteCounts) {
+        val r = m.record ?: return
+        if (m.undecided > 0) return
+        m.record = null
+        heldMinutes.remove(m)
+        listener.onMinute(r.copy(eventCount = m.events, windEventCount = m.wind))
+    }
 
     /** Wall-clock time (epoch ms) of input sample index [sample]. */
     fun epochMsAt(sample: Long): Long = anchorMs + Math.floorDiv((sample - anchorSample) * 1000L, fs.toLong())
@@ -293,6 +386,13 @@ class MeasurementEngine(
             val a2 = a * a
             tickSumA += a2
             tickSumZ += x * x
+            featureFilters.process(x, a)
+            val fb = featureFilters.band
+            val fl = featureFilters.low
+            val ft = featureFilters.total
+            tickSumBand += fb * fb
+            tickSumLow += fl * fl
+            tickSumTotal += ft * ft
             val y = fast.process(a2)
             if (y > tickMaxY) tickMaxY = y
             tickPos++
@@ -307,6 +407,7 @@ class MeasurementEngine(
 
     private fun resetTick() {
         tickPos = 0; tickSumA = 0.0; tickSumZ = 0.0; tickMaxY = 0.0
+        tickSumBand = 0.0; tickSumLow = 0.0; tickSumTotal = 0.0
         tickMaxZeroRun = zeroRun // a zero run continuing from the previous tick still counts
         silencedSeenInTick = false
     }
@@ -349,6 +450,7 @@ class MeasurementEngine(
         secTicks++
         minuteSamples += tickLen
         if (valid) {
+            currentTickIndex = tracker.push(laf, tickSumA / tickLen, tickSumBand / tickLen, tickSumLow / tickLen, tickSumTotal / tickLen)
             secValidTicks++
             secSumA += tickSumA; secSumZ += tickSumZ
             if (tickMaxY > secMaxY) secMaxY = tickMaxY
@@ -357,9 +459,21 @@ class MeasurementEngine(
             if (minuteLafCount == minuteLafs.size) minuteLafs = minuteLafs.copyOf(minuteLafs.size * 2)
             minuteLafs[minuteLafCount++] = laf
             background.add(laf)
+            // The floor of the trailing window before this tick; frozen by the detector for a candidate.
+            detector.floorDb = localFloor.value
             detector.onTick(endSample, laf, lafMaxTick, leqTick)
+            localFloor.add(laf)
+            val floorNow = localFloor.value
+            if (!floorNow.isNaN()) {
+                if (minuteFloorCount == minuteFloors.size) minuteFloors = minuteFloors.copyOf(minuteFloors.size * 2)
+                minuteFloors[minuteFloorCount++] = floorNow
+            }
+            updateTail()
         } else {
+            currentTickIndex = tracker.pushInvalid()
             detector.interrupt(endSample - tickLen)
+            // A tail cannot continue over invalid audio.
+            if (tailAcc != null) finishTail(currentTickIndex)
         }
         listener.onTick(LafTick(endSample, nowMs, laf, lafMaxTick, leqTick, valid))
         recentTickEnd[recentTickPos] = endSample
@@ -397,19 +511,13 @@ class MeasurementEngine(
                 laeqRunning60sDb = if (running.isNaN()) Double.NaN else Acoustics.db(running, offset),
                 backgroundDb = bg,
                 validFraction = secValidTicks / 8.0,
+                localFloorDb = localFloor.value,
             )
         )
         secTicks = 0; secValidTicks = 0; secSumA = 0.0; secSumZ = 0.0; secMaxY = 0.0
     }
 
-    private fun releaseHeldMinute() {
-        val held = heldMinute ?: return
-        heldMinute = null
-        listener.onMinute(held)
-    }
-
     private fun endMinute(boundaryMs: Long) {
-        releaseHeldMinute()
         if (minuteSamples > 0) {
             val stats = Percentiles.stats(minuteLafs.copyOf(minuteLafCount))
             val validSamples = minuteValidTicks.toLong() * tickLen
@@ -434,7 +542,7 @@ class MeasurementEngine(
                 l10Db = stats.l10,
                 l50Db = stats.l50,
                 l90Db = stats.l90,
-                eventCount = minuteEvents,
+                eventCount = curMinute.events,
                 dominantCategory = dominant,
                 categoryShares = shares,
                 classifierFrames = minuteFrames,
@@ -444,12 +552,20 @@ class MeasurementEngine(
                 calibrated = config.calibrated,
                 validSeconds = validSamples.toDouble() / fs,
                 clockCorrections = minuteClockCorrections,
+                localFloorDb = if (minuteFloorCount > 0) QuickSelect.percentile(minuteFloors, minuteFloorCount, 50.0) else Double.NaN,
+                windEventCount = curMinute.wind,
             )
-            // An event that started in this minute but is not yet confirmed must be counted here.
-            if (recording && detector.isUnconfirmedCandidate) heldMinute = record else listener.onMinute(record)
+            // Events that started in this minute and are not yet complete must be counted here.
+            if (curMinute.undecided > 0) {
+                curMinute.record = record
+                heldMinutes += curMinute
+            } else {
+                listener.onMinute(record)
+            }
+            curMinute = MinuteCounts()
         }
         minuteSumA = 0.0; minuteSamples = 0; minuteValidTicks = 0; minuteMaxY = 0.0; minuteLafCount = 0
-        minuteEvents = 0; minuteClockCorrections = 0
+        minuteFloorCount = 0; minuteClockCorrections = 0
         minuteBucketCounts.fill(0); minuteFrames = 0
 
         checkClock()
@@ -520,13 +636,9 @@ class MeasurementEngine(
                 acc.frames++
             }
         }
-        val it = pending.iterator()
-        while (it.hasNext()) {
-            val acc = it.next()
-            if (acc.frames > 0) {
-                it.remove()
-                emitEvent(acc)
-            }
+        var i = 0
+        while (i < pending.size) {
+            if (!tryEmit(pending[i], force = false)) i++
         }
     }
 
@@ -561,20 +673,33 @@ class MeasurementEngine(
 
     private fun finalizePending(force: Boolean) {
         if (pending.isEmpty()) return
-        val timeout = (config.eventClassificationTimeoutSeconds * fs).toLong()
-        val it = pending.iterator()
-        while (it.hasNext()) {
-            val acc = it.next()
-            if (force || !classifierActive || totalSamples - acc.detected!!.endSample > timeout) {
-                it.remove()
-                emitEvent(acc)
-            }
+        var i = 0
+        while (i < pending.size) {
+            if (!tryEmit(pending[i], force)) i++
         }
-        if (pending.isEmpty()) forceClassification = false
+        var waitingForFrame = false
+        for (acc in pending) if (acc.frames == 0) waitingForFrame = true
+        if (!waitingForFrame) forceClassification = false
+    }
+
+    /**
+     * Emits a closed event once its features are known and it has a classification (or the
+     * classifier is off, or none arrived within the timeout, or [force]). True if emitted.
+     */
+    private fun tryEmit(acc: EventAcc, force: Boolean): Boolean {
+        if (acc.features == null) return false
+        val timeout = (config.eventClassificationTimeoutSeconds * fs).toLong()
+        if (force || !classifierActive || acc.frames > 0 || totalSamples - acc.detected!!.endSample > timeout) {
+            pending.remove(acc)
+            emitEvent(acc)
+            return true
+        }
+        return false
     }
 
     private fun emitEvent(acc: EventAcc) {
         val ev = acc.detected!!
+        val features = acc.features
         var dominant: String? = null
         var score = 0f
         var top: List<LabelScore> = emptyList()
@@ -588,6 +713,11 @@ class MeasurementEngine(
             } else {
                 dominant = CategoryMapper.UNCLASSIFIED
             }
+        }
+        // Wind on the microphone is the detector's decision, not the classifier's: own category.
+        if (features?.wind == true) {
+            dominant = WindRule.CATEGORY
+            score = 0f
         }
         val startMs = epochMsAt(ev.startSample)
         listener.onEventEmitted(
@@ -607,6 +737,7 @@ class MeasurementEngine(
                 audioSource = config.audioSource,
                 calibrated = config.calibrated,
                 minLevelDb = ev.minLevelDb,
+                features = features,
             ),
             ev.startSample,
             ev.endSample,
@@ -616,15 +747,15 @@ class MeasurementEngine(
     /** Ends the measurement: closes a running event and emits the partial minute (if ≥ 1 s). */
     fun stop() {
         detector.flush(totalSamples)
+        // The tail ends with the audio there is.
+        if (tailAcc != null) finishTail(tracker.count)
         finalizePending(force = true)
-        releaseHeldMinute()
-        if (recording && minuteSamples >= fs) {
-            recording = false // no held minute at stop
-            endMinute(nextMinuteBoundaryMs)
-        }
-        releaseHeldMinute()
+        if (recording && minuteSamples >= fs) endMinute(nextMinuteBoundaryMs)
+        // Every event is decided now; nothing can stay held.
+        for (h in heldMinutes.toList()) { h.undecided = 0; releaseIfDecided(h) }
         recording = false
         classifierRing.clear()
         decimator.reset()
+        featureFilters.reset()
     }
 }

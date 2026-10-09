@@ -188,14 +188,33 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
         }
+        MigrationNoticeCard()
         SectionCard("Ereigniserkennung") {
-            StatRow("Schwelle über Hintergrund (L90, 5 min)", "${s.eventThresholdDb.toInt()} dB")
+            StatRow("Ereignis-Schwelle über lokalem Hintergrund", "${Fmt.db(s.eventExcessDb, 1)} dB")
             Slider(
-                value = s.eventThresholdDb.toFloat(), valueRange = 5f..20f, steps = 14,
-                onValueChange = { v -> c.settings.update { it.copy(eventThresholdDb = Math.round(v).toDouble()) } },
+                value = s.eventExcessDb.toFloat(),
+                valueRange = AppSettings.EVENT_EXCESS_MIN.toFloat()..AppSettings.EVENT_EXCESS_MAX.toFloat(),
+                steps = ((AppSettings.EVENT_EXCESS_MAX - AppSettings.EVENT_EXCESS_MIN) * 2).toInt() - 1, // 0.5 dB steps
+                onValueChange = { v -> c.settings.update { it.copy(eventExcessDb = EventFloor.roundToHalf(v.toDouble())) } },
             )
             Text(
-                "Ein Ereignis beginnt, wenn LAF den Hintergrund um die Schwelle übersteigt, dauert mind. 0.5 s und endet 3 dB unter der Schwelle.",
+                "Ein Ereignis beginnt, wenn der Pegel (LAF) den lokalen Hintergrund um diesen Wert übersteigt, dauert mindestens " +
+                    "0.5 s und endet 3 dB darunter. Der lokale Hintergrund ist der Pegel, der in den letzten Sekunden 90 % der Zeit " +
+                    "überschritten wurde (L90) – das stetige Rauschen, z. B. der Autobahn; während eines Ereignisses bleibt er fest. " +
+                    "Vorbeifahrten lagen in einer gemessenen Nacht mindestens 6.5 dB (Median 9 dB) darüber; Standard 6.5 dB.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Spacer(Modifier.height(8.dp))
+            StatRow("Lokaler Hintergrund: Fenster", "${s.localFloorWindowSeconds} s")
+            Slider(
+                value = s.localFloorWindowSeconds.toFloat(),
+                valueRange = AppSettings.LOCAL_WINDOW_MIN.toFloat()..AppSettings.LOCAL_WINDOW_MAX.toFloat(),
+                steps = (AppSettings.LOCAL_WINDOW_MAX - AppSettings.LOCAL_WINDOW_MIN) / 5 - 1, // 5 s steps
+                onValueChange = { v -> c.settings.update { it.copy(localFloorWindowSeconds = (Math.round(v / 5f) * 5)) } },
+            )
+            Text(
+                "Über wie viele Sekunden der lokale Hintergrund (L90) gebildet wird. Kürzer folgt er schneller dem wechselnden " +
+                    "Rauschen (Wind, Verkehrsfluss), länger ist er ruhiger. Standard 30 s.",
                 style = MaterialTheme.typography.bodySmall,
             )
             Spacer(Modifier.height(8.dp))
@@ -213,6 +232,35 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     "gespeichert, verschiebt sich der Wert um die Änderung des Offsets.",
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+        SectionCard("Experten: Wind am Mikrofon") {
+            Text(
+                "Wind am Mikrofon erzeugt tieffrequentes Wummern, das kein Filter entfernt. Ereignisse mit fast nur tiefen " +
+                    "Frequenzen oder mit starkem Flattern der tiefen Frequenzen gelten als «Wind»: Sie werden gespeichert und " +
+                    "exportiert, aber nicht als Ereignisse gezählt (weder pro Stunde noch nach Quelle).",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            StatRow("Anteil 20–200 Hz mindestens", "${Fmt.db(s.windLfShareMin * 100, 0)} %")
+            Slider(
+                value = s.windLfShareMin.toFloat(),
+                valueRange = AppSettings.WIND_LF_SHARE_MIN.toFloat()..AppSettings.WIND_LF_SHARE_MAX.toFloat(),
+                steps = Math.round((AppSettings.WIND_LF_SHARE_MAX - AppSettings.WIND_LF_SHARE_MIN) * 100).toInt() - 1,
+                onValueChange = { v -> c.settings.update { it.copy(windLfShareMin = Math.round(v * 100) / 100.0) } },
+            )
+            StatRow("oder Flattern (20–200 Hz) mindestens", "${Fmt.db(s.windFlutterMinDb, 1)} dB")
+            Slider(
+                value = s.windFlutterMinDb.toFloat(),
+                valueRange = AppSettings.WIND_FLUTTER_MIN.toFloat()..AppSettings.WIND_FLUTTER_MAX.toFloat(),
+                steps = Math.round((AppSettings.WIND_FLUTTER_MAX - AppSettings.WIND_FLUTTER_MIN) * 5).toInt() - 1, // 0.2 dB
+                onValueChange = { v -> c.settings.update { it.copy(windFlutterMinDb = Math.round(v * 5) / 5.0) } },
+            )
+            Text(
+                "Standard 95 % bzw. 3.8 dB (aus einer Nacht mit 528 Ereignissen). Flattern: wie stark der Pegel unter 200 Hz " +
+                    "innerhalb des Ereignisses schnell hin und her schwankt.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            SwitchRow("Wind-Ereignisse in der Grafik zeigen", s.showWindEvents) { v -> c.settings.update { it.copy(showWindEvents = v) } }
+            Text("Als kleine, hohle graue Punkte («Wind (ausgeschlossen)»). Gezählt werden sie nie.", style = MaterialTheme.typography.bodySmall)
         }
         SectionCard("Geräuschquellen-Erkennung") {
             SwitchRow("Klassifikation (YAMNet, auf dem Gerät)", s.classifierEnabled) { v -> c.settings.update { it.copy(classifierEnabled = v) } }

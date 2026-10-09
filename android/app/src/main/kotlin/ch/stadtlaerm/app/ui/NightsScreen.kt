@@ -83,6 +83,7 @@ fun NightsScreen(modifier: Modifier = Modifier, vm: HistoryViewModel = viewModel
                     onPlayClip = EditionClips.player?.let { play ->
                         { ref: String -> play(ref, data?.clipRefsInTimeOrder(settings.eventMinLevelDb) ?: listOf(ref)) }
                     },
+                    showWindEvents = settings.showWindEvents,
                 )
             }
         }
@@ -94,7 +95,8 @@ fun NightsScreen(modifier: Modifier = Modifier, vm: HistoryViewModel = viewModel
             Text(
                 "Nachtzeit 22:00–06:00 (Ortszeit; bei Zeitumstellung 7 bzw. 9 h). Pegel energetisch gemittelt über die " +
                     "gültige Messzeit; Minuten mit weniger als 50 % gültigem Signal (z. B. Mikrofon durch Anruf stummgeschaltet) werden nicht gewertet. " +
-                    "Ereignisse zählen ab ${Fmt.db(settings.eventMinLevelDb, 1)} dB(A) (Einstellungen). Tippen zeigt die Nacht in der Grafik.",
+                    "Hintergrund (L90): das stetige Rauschen, Median der Minuten-L90. Ereignisse: Pegelspitzen darüber, ab " +
+                    "${Fmt.db(settings.eventMinLevelDb, 1)} dB(A) (Einstellungen), ohne Wind am Mikrofon. Tippen zeigt die Nacht in der Grafik.",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
@@ -139,6 +141,10 @@ private fun NightCard(n: NightSummary, onClick: () -> Unit) {
                 )
             }
         }
+        StatRow(
+            "Hintergrund (L90) · Ereignisse/h",
+            "${Fmt.db(n.humDb)} dB(A) · " + (if (n.eventsPerHour.isNaN()) "–" else ChartFmt.comma(n.eventsPerHour, if (n.eventsPerHour < 10) 1 else 0)),
+        )
         StatRow("Nacht-LAeq", "${Fmt.db(n.laeqDb)} dB(A)" + if (n.allCalibrated) "" else " (unkalibriert)")
         if (n.anyRecalibrated) {
             Text(
@@ -150,13 +156,8 @@ private fun NightCard(n: NightSummary, onClick: () -> Unit) {
         if (n.excludedMinutes > 0) {
             StatRow("Nicht gewertete Minuten (< 50 % gültig)", n.excludedMinutes.toString())
         }
-        StatRow("Ereignisse", n.eventCount.toString())
-        if (!n.eventsPerHour.isNaN()) {
-            StatRow(
-                "Ereignisse/h · Dynamik L10−L90",
-                "${ChartFmt.comma(n.eventsPerHour, if (n.eventsPerHour < 10) 1 else 0)} · ${ChartFmt.comma(n.dynamicsDb, 1)} dB",
-            )
-        }
+        StatRow("Ereignisse", n.eventCount.toString() + if (n.windEventCount > 0) " (${n.windEventCount} Wind ausgeschlossen)" else "")
+        if (!n.dynamicsDb.isNaN()) StatRow("Dynamik L10−L90", "${ChartFmt.comma(n.dynamicsDb, 1)} dB")
         StatRow("davon ≥ Hintergrund + 15 dB", n.strongEventCount.toString())
         n.loudestEvent?.let { e ->
             StatRow(

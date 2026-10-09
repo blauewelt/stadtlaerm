@@ -73,6 +73,8 @@ fun MeasureScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        item { MigrationNoticeCard() }
+
         if (live.running && (live.micSilenced || live.invalidAudio)) {
             item {
                 SectionCard {
@@ -97,6 +99,7 @@ fun MeasureScreen(modifier: Modifier = Modifier) {
                 LevelBar(live.lafDb)
                 Spacer(Modifier.height(4.dp))
                 StatRow("LAeq letzte Minute (gleitend)", "${Fmt.db(live.laeq60sDb)} dB(A)")
+                StatRow("Lokaler Hintergrund L90 (Ereignis-Bezug)", "${Fmt.db(live.localFloorDb)} dB(A)")
                 StatRow("Hintergrund L90 (5 min)", "${Fmt.db(live.backgroundDb)} dB(A)")
             }
         }

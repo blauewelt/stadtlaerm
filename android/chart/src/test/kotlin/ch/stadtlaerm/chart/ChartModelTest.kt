@@ -1,6 +1,9 @@
 package ch.stadtlaerm.chart
 
+import ch.stadtlaerm.dsp.EventFeatures
+import ch.stadtlaerm.dsp.EventShape
 import ch.stadtlaerm.dsp.Iso
+import ch.stadtlaerm.dsp.WindRule
 import ch.stadtlaerm.dsp.MinuteRecord
 import ch.stadtlaerm.dsp.NightSummarizer
 import ch.stadtlaerm.dsp.NoiseEvent
@@ -28,6 +31,10 @@ class ChartModelTest {
 
     private fun event(t: Long, max: Double, cat: String = "road_traffic") = NoiseEvent(
         t, Iso.format(t, zone, true), 2.0, max, max, 40.0, 10.0, cat, 0.5f, emptyList(), 1, null, "UNPROCESSED", true,
+    )
+
+    private fun windEvent(t: Long, max: Double) = event(t, max, WindRule.CATEGORY).copy(
+        thresholdDb = 6.5, features = EventFeatures(38.0, max - 38.0, 0.2, 0.5, 0.4, 3.0, 0.98, 2.5, true, EventShape.IMPULSE),
     )
 
     private fun at(h: Int, m: Int) = SyntheticData.ms(if (h >= 12) LocalDateTime.of(2026, 10, 9, h, m) else LocalDateTime.of(2026, 10, 10, h, m))
@@ -307,9 +314,62 @@ class ChartModelTest {
         assertEquals(48.0, m.summary.eventsPerHour, 1e-9)
         assertEquals(6.0, m.summary.dynamicsDb, 1e-9)
         // Night 22–06 measured only 22–23: coverage 12.5 %, then the end of measurement.
-        assertEquals("Messung 13 % der Zeit · 48 Ereignisse/h · Dynamik L10−L90 6,0 dB · Messung bis 23:00", m.summary.line())
+        assertEquals("LAeq 40,0 dB(A) · 48 Ereignisse · Messung 13 % der Zeit · Dynamik L10−L90 6,0 dB · Messung bis 23:00", m.summary.line())
+        assertEquals(
+            "LAeq 40,0 dB(A) · 48 Ereignisse (0 Töff & Poser) · Messung 13 % der Zeit · Dynamik L10−L90 6,0 dB · Messung bis 23:00",
+            m.summary.line(highlightName = "Töff & Poser"),
+        )
+        assertEquals("48/h", m.summary.eventsPerHourText)
         val few = build(ms, evs.take(5), floor = 30.0)
-        assertTrue(few.summary.line().contains("5,0 Ereignisse/h"), few.summary.line())
+        assertEquals("5,0/h", few.summary.eventsPerHourText)
+        assertTrue(few.summary.line().contains("5 Ereignisse"), few.summary.line())
+        assertTrue(build(ms, evs.take(1), floor = 30.0).summary.line().contains("1 Ereignis ·"))
+    }
+
+    // ---- wind (detector v2) ---------------------------------------------------------------------
+
+    @Test
+    fun windEventsAreDrawnApartAndCountedNowhere() {
+        val evs = listOf(
+            event(at(22, 1), 60.0, "voices"), event(at(22, 2), 61.0, "loud_vehicle"),
+            windEvent(at(22, 3), 90.0), windEvent(at(22, 4), 50.0), windEvent(at(22, 5), 30.0), // the last one below the floor
+        )
+        val ms = minutes(22, 0, 60) { 40.0 }
+        val m = build(ms, evs)
+        assertEquals(2, m.summary.eventCount)
+        assertEquals(1, m.summary.highlightCount)
+        assertEquals(2, m.summary.windCount)
+        assertEquals(61.0, m.summary.loudest!!.lafMaxDb) // not the 90 dB gust
+        assertEquals(2.0, m.summary.eventsPerHour, 1e-9)
+        assertEquals(listOf(90.0, 50.0), m.windEvents.map { it.lafMaxDb })
+        assertTrue((m.otherEvents + m.highlightedEvents).none { it.wind })
+        assertEquals(37.0, m.summary.humDb) // the minutes' L90 (laeq − 3)
+        // Shown: the y axis makes room for them; hidden: neither drawn nor in the range.
+        assertEquals(95.0, m.yRange.hi)
+        val hidden = ChartModel.build(ChartData(night, ms, evs, after), zone, "loud_vehicle", 45.0, showWind = false)
+        assertTrue(hidden.windEvents.isEmpty())
+        assertEquals(2, hidden.summary.windCount)
+        assertTrue(hidden.yRange.hi < 95.0)
+        // The night list counts the same way.
+        val n = NightSummarizer.summarize(ms, evs, zone, eventMinLevelDb = 45.0).single()
+        assertEquals(n.eventCount, m.summary.eventCount)
+        assertEquals(n.windEventCount, m.summary.windCount)
+        assertEquals(n.humDb, m.summary.humDb)
+        // The week view draws no wind.
+        val week = ChartModel.build(ChartData(win.of(RangeMode.WEEK, LocalDate.of(2026, 10, 5)), ms, evs, after), zone, "loud_vehicle", 45.0)
+        assertTrue(week.windEvents.isEmpty())
+        // Hit test and tooltip.
+        val g = ChartGeometry(m, PlotRect(40f, 10f, 1040f, 410f))
+        val dot = g.windDots.first()
+        val sel = g.hitTest(dot.x, dot.y, 20f)
+        assertIs<Selection.Event>(sel)
+        assertTrue(sel.event.wind)
+        val lines = tooltipLines(sel, m)
+        assertTrue(lines[0].endsWith("· $WIND_LEGEND"), lines[0])
+        assertTrue(lines.any { it.startsWith("Lokaler Hintergrund 38.0 dB(A) (+52.0 dB)") }, lines.toString())
+        assertTrue(lines.any { it.startsWith("Tieftonanteil 98 %") }, lines.toString())
+        assertEquals("Wind", ChartCategories.name(WindRule.CATEGORY))
+        assertTrue(ChartCategories.all.none { it.first == WindRule.CATEGORY }) // not a highlight chip
     }
 
     @Test

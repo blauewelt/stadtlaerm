@@ -122,10 +122,10 @@ class NightsAndCsvTest {
             "start,duration_s,valid_s,coverage,laeq_db,lafmax_db,lafmin_db,l1_db,l10_db,l50_db,l90_db,event_count,dominant_category," +
                 "share_road_traffic,share_unclassified,classifier_frames,calibration_id,calibration_offset_db,audio_source,calibrated," +
                 "clock_corrections,orig_laeq_db,orig_lafmax_db,orig_lafmin_db,orig_l1_db,orig_l10_db,orig_l50_db,orig_l90_db," +
-                "recalibrated_from_id,recalibration_offset_db",
+                "recalibrated_from_id,recalibration_offset_db,local_floor_db,wind_event_count",
             mcsv[0],
         )
-        assertEquals("2026-10-02T23:10:00+02:00,60.0,60.0,1.000,55.0,60.0,50.0,59.0,57.0,55.0,53.0,0,road_traffic,1.000,,60,1,110.00,UNPROCESSED,true,0,,,,,,,,,", mcsv[1])
+        assertEquals("2026-10-02T23:10:00+02:00,60.0,60.0,1.000,55.0,60.0,50.0,59.0,57.0,55.0,53.0,0,road_traffic,1.000,,60,1,110.00,UNPROCESSED,true,0,,,,,,,,,,,0", mcsv[1])
     }
 
     @Test
@@ -140,28 +140,31 @@ class NightsAndCsvTest {
         assertEquals(
             listOf("orig_laeq_db", "orig_lafmax_db", "orig_lafmin_db", "orig_l1_db", "orig_l10_db", "orig_l50_db", "orig_l90_db",
                 "recalibrated_from_id", "recalibration_offset_db"),
-            header.takeLast(9),
+            header.dropLast(2).takeLast(9),
         )
-        assertEquals("clock_corrections", header[header.size - 10])
+        assertEquals("clock_corrections", header[header.size - 12])
+        assertEquals(listOf("local_floor_db", "wind_event_count"), header.takeLast(2))
         val row = mcsv[1].split(",")
         assertEquals(header.size, row.size)
         assertEquals("64.6", row[header.indexOf("laeq_db")])
         assertEquals("7", row[header.indexOf("calibration_id")])
         assertEquals("121.95", row[header.indexOf("calibration_offset_db")])
         assertEquals("true", row[header.indexOf("calibrated")])
-        assertEquals(listOf("55.0", "60.0", "50.0", "59.0", "57.0", "55.0", "53.0", "default", "112.35"), row.takeLast(9))
+        assertEquals(listOf("55.0", "60.0", "50.0", "59.0", "57.0", "55.0", "53.0", "default", "112.35"), row.dropLast(2).takeLast(9))
 
         val e = ch.stadtlaerm.dsp.calibration.Recalibration.recalibrate(event(t, 60.0, 40.0, "road_traffic"), 110.0, target)
         val ecsv = Csv.events(listOf(e)).lines()
         val eh = ecsv[0].split(",")
-        assertEquals(listOf("orig_lafmax_db", "orig_sel_db", "orig_background_db", "recalibrated_from_id", "recalibration_offset_db"), eh.takeLast(5))
-        assertEquals("calibrated", eh[eh.size - 6])
+        val nf = Csv.EVENT_FEATURE_COLUMNS.size
+        assertEquals(Csv.EVENT_FEATURE_COLUMNS, eh.takeLast(nf)) // v0.4.0, appended after the v0.3.2 columns
+        assertEquals(listOf("orig_lafmax_db", "orig_sel_db", "orig_background_db", "recalibrated_from_id", "recalibration_offset_db"), eh.dropLast(nf).takeLast(5))
+        assertEquals("calibrated", eh[eh.size - nf - 6])
         val er = ecsv[1].split(",")
         assertEquals(eh.size, er.size)
         assertEquals("72.0", er[eh.indexOf("lafmax_db")])
-        assertEquals(listOf("60.0", "61.0", "40.0", "1", "110.00"), er.takeLast(5))
-        // Not re-evaluated: the new columns are empty.
-        assertTrue(Csv.events(listOf(event(t, 60.0, 40.0, "road_traffic"))).lines()[1].endsWith(",true,,,,,"))
+        assertEquals(listOf("60.0", "61.0", "40.0", "1", "110.00"), er.dropLast(nf).takeLast(5))
+        // Not re-evaluated, no v0.4.0 features: the new columns are empty (wind false).
+        assertTrue(Csv.events(listOf(event(t, 60.0, 40.0, "road_traffic"))).lines()[1].endsWith(",true,,,,,,,,,,,,,,false,"))
     }
 
     @Test
