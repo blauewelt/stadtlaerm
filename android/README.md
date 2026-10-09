@@ -1,4 +1,4 @@
-# Stadtlärm — citizen noise measurement for Zürich (Android, v0.3.3)
+# Stadtlärm — citizen noise measurement for Zürich (Android, v0.4.0)
 
 Stadtlärm turns an Android phone into a night-time noise logger. It measures A-weighted
 sound levels the way a sound level meter does (IEC 61672-1 A-weighting, Fast time weighting),
@@ -26,7 +26,10 @@ below are relative to this directory.
 | LAeq,1s / LAeq,1min | Energy-equivalent A-weighted level over 1 s / 1 min (from the un-time-weighted signal) |
 | LAFmax / LAFmin | Max/min of LAF in the period (max from the continuous Fast signal, min from the 125 ms samples) |
 | L1, L10, L50, L90 | Level exceeded 1/10/50/90 % of the time, from the 480 LAF samples of the minute (so L10 > L90) |
-| Event | LAF > background + threshold (default 10 dB) for ≥ 0.5 s; ends below background + threshold − 3 dB. Background = L90 of LAF over the trailing 5 min, frozen at event start. Kept only if its LAFmax also reaches the absolute **event floor** (setting «Mindestpegel», default 30 dB(A), 20–70) |
+| Local floor | L90 of the LAF samples over the trailing 30 s (setting 10–60 s), recomputed every 125 ms; the reference for events (since v0.4.0) |
+| Hum («Hintergrund (L90)») | The steady level under the bursts: per minute the stored L90; for a night or chart window the median of the valid minutes' L90 |
+| Event (burst) | LAF ≥ local floor + excess (setting, default 6.5 dB, 3–20) for ≥ 0.5 s; ends below floor + excess − 3 dB; the floor is frozen at the start; at most 300 s. Kept only if its LAFmax also reaches the absolute **event floor** (setting «Mindestpegel», default 30 dB(A), 20–70). Events flagged as **wind** are stored but not counted. See [Event detection](#event-detection-detector-v2) |
+| Background (5 min) | L90 of LAF over the trailing 5 min. Before v0.4.0 the event reference; now only stored with each event (`background_db`) and shown live, for continuity |
 | SEL (LAE) | Sound exposure level of the event, re 1 s: `10·log10(Σ 10^(Leq_tick/10)·0.125 s)` |
 | Valid time / coverage | Seconds of a minute with a real microphone signal. Time while Android silences the mic (phone call, voice assistant — the app then receives zeros) or while the input is digital silence, plus 0.5 s of filter recovery, is excluded from every level, percentile, event and the background |
 | Night LAeq | Energy average over the valid time of all minutes that start between 22:00 and 06:00 local time; minutes with < 50 % coverage are left out. The night is 8 h, or 7 h / 9 h on DST-change nights |
@@ -54,12 +57,63 @@ raw AudioSet labels with scores, and the event floor in force. Since v0.3.2 both
 original levels when they are re-evaluated with a later calibration (see "Re-evaluating old
 measurements").
 
-**What `event_count` means.** A minute's `event_count` is the number of events that *started* in
-that minute and passed the floor in force *when it was measured*. It is never recomputed: neither
-when the floor setting changes nor when the minute is re-evaluated with a new calibration. The
-night list and the chart do not use it; they count the stored events with the *current* floor at
-read time, so a raised floor shows fewer events there while `event_count` in the CSV stays as
-recorded.
+Since v0.4.0 every event also stores its detector-v2 features (local floor, excess, rise and decay
+time, jaggedness, mid-band rise, LF share and flutter, the wind flag and the shape), and every minute
+the median local floor and the number of wind events (`wind_event_count`).
+
+**What `event_count` means.** A minute's `event_count` is the number of **bursts** — events without
+the wind flag — that *started* in that minute and passed the floor in force *when it was measured*
+(before v0.4.0 there was no wind flag, so it counted all events). Wind events of the minute are in
+`wind_event_count`. Whether an event is wind is known only when it is complete (up to 5 s after its
+end), so a minute is stored only once all events that started in it are complete. Neither count is
+ever recomputed: neither when the floor setting changes nor when the minute is re-evaluated with a
+new calibration. The night list and the chart do not use them; they count the stored events with
+the *current* floor at read time, so a raised floor shows fewer events there while `event_count` in
+the CSV stays as recorded.
+
+## Event detection (detector v2)
+
+**Hum vs bursts.** At a window near a highway the night has two parts: a constant hum (the distant
+highway itself; it drops overnight and changes with the wind) and bursts above it (a car or a
+motorbike passing nearby, voices). The hum *is* the L90; the app reports it as its own quantity,
+«Hintergrund (L90)», and counts and characterises only the bursts above it, as «Ereignisse».
+
+**Local floor and trigger.** Until v0.3 an event started 10 dB above the L90 of the last 5 minutes.
+Measured on one night with 528 recorded event clips (uncalibrated), that 5-minute L90 sat a median
+3.1 dB *below* the level right around an event, because the hum moves within minutes; a third of the
+events barely exceeded the local hum. Since v0.4.0 the reference is the **local floor**, the L90 of
+LAF over the last 30 s (setting «Lokaler Hintergrund: Fenster», 10–60 s), updated every 125 ms. An
+event starts when LAF ≥ floor + **excess** (setting «Ereignis-Schwelle über lokalem Hintergrund»,
+default 6.5 dB — vehicle passes in that night were ≥ 6.5 dB above it, median 9.1, p10 6.9), ends when
+LAF falls below floor + excess − 3 dB, needs ≥ 0.5 s and the absolute event floor, and is closed after
+300 s. The floor is frozen at the event's start (the 30 s window keeps filling meanwhile). Detection
+starts once 5 s of history exist. The excess in force is stored as `threshold_db`. Settings of v0.3
+are migrated once: a threshold *t* over the 5-min background becomes an excess of max(3, *t* − 3.5) dB
+(10 → 6.5, 7 → 3.5); if it had been changed, the app says so once.
+
+**Features.** When an event is complete the app computes, from the 125 ms ticks (all O(1) per
+sample, no FFT, no audio kept; code: `dsp/.../EventFeatures.kt`):
+
+| Feature (CSV column) | Definition |
+|---|---|
+| `local_floor_db` | the local floor at the start (dB(A)) |
+| `excess_db` | LAFmax − local floor (dB) |
+| `rise_s` | rise time from 10 % to 90 % of the excess on the 125 ms LAF curve (relative to the curve's own peak; crossings interpolated; the 10 % point is searched up to 10 s before the start); empty if not found |
+| `decay_s` | from the first fall below 90 % after the peak to the first time at or below 10 %. For this the app follows the level up to 5 s past the event's end (the "tail": until 10 % is reached, the next event starts, the audio becomes invalid or the measurement stops); empty if 10 % was not reached in time. The event is reported after the tail |
+| `jaggedness` | RMS of the second difference of the 125 ms LAF curve during the event, divided by the excess (a smooth hump ≈ 0.01–0.1) |
+| `mid_band_rise_db` | A-weighted level in 250 Hz–4.5 kHz (2nd-order Butterworth high-pass and low-pass) over the loudest 1 s of the event minus the same band over the 5 s before its start |
+| `lf_share` | unweighted energy 20–200 Hz / energy 20 Hz–8 kHz over the event (20 Hz high-pass, then a 200 Hz resp. 8 kHz low-pass, 2nd-order Butterworth) |
+| `lf_flutter_db` | RMS of the detrended 20–200 Hz level: the un-time-weighted 125 ms level of that band minus its centred running median over ±8 ticks (≈ 2.1 s; the window shrinks symmetrically towards the event's edges). The median follows slow trends and single steps (any on/offset), so what remains is the fast back-and-forth (≈ 0.5 Hz up to the 4 Hz the tick rate allows) of wind turbulence |
+| `wind` | `lf_share ≥ 0.95` **or** `lf_flutter_db ≥ 3.8` (thresholds under Einstellungen → Experten) |
+| `shape` | `long` (≥ 30 s), else `impulse` (rise < 0.35 s and ≤ 2 s), else `jagged` (jaggedness ≥ 0.3), else `hump`. Informational only, not a filter; thresholds provisional |
+
+**Wind on the microphone.** In the recorded night 14 % of the events were wind: almost all their
+unweighted energy below 200 Hz, or a strongly fluttering low-frequency level, sub-second thumps or
+multi-peak gusts, in episodes. A high-pass does not remove it. Wind events are stored (category
+«Wind», id `wind`, not part of the classifier mapping; the classifier's labels are kept) and exported
+with `wind = true`, but are left out of every count: events/h, the night's events, the categories,
+the loudest event, `event_count`. The chart draws them as small hollow grey dots («Wind
+(ausgeschlossen)»; can be hidden under Experten).
 
 ## Chart
 
@@ -72,7 +126,8 @@ The **Nächte** tab starts with a chart of the measured levels, drawn by the app
   on the running night, otherwise on the most recent night with data. Tapping a night in the list
   below opens it in the chart.
 - **Marks:** a band from L90 to L10 (the background), the LAeq line per minute, and every event
-  as a dot at (start, LAFmax). One category is highlighted in orange and drawn on top (default
+  as a dot at (start, LAFmax); wind events as small hollow grey dots below the others (not in the
+  week view; setting «Wind-Ereignisse in der Grafik zeigen»). One category is highlighted in orange and drawn on top (default
   Töff & Poser; chosen with the scrolling row of chips under the chart and remembered; the
   selected chip carries the same orange dot), all others as smaller grey dots. Night
   periods are shaded. The y axis runs from the lowest L90 − 5 dB to the loudest shown event or
@@ -86,11 +141,13 @@ The **Nächte** tab starts with a chart of the measured levels, drawn by the app
 - **Touch:** a tap shows a crosshair and a tooltip for the nearest minute (hour), or for an
   event dot within 16 dp (in the day and week views with weekday and date); while the tooltip is open, dragging sideways moves the crosshair.
   Tapping the tooltip (or outside the plot) closes it.
-- **Summary:** LAeq of the window (same rule as the night summaries), number of events (and of
-  the highlighted category), the loudest event, the measured share of the time, **events per
-  hour** of valid measurement, the **dynamics** (median over the valid minutes of L10 − L90: a
-  few dB for steady traffic, more for a quiet street with bursts) and any interruptions. The
-  night list shows events/h and dynamics as well.
+- **Summary:** three tiles — **«Hintergrund (L90)»**, the hum (median over the valid minutes of
+  their L90), **«Ereignisse»**, bursts per hour of valid measurement without wind (below it «n Wind
+  ausgeschlossen»), and **«Lautestes»**, the loudest burst — and a line with the LAeq of the window
+  (same rule as the night summaries), the number of events (and of the highlighted category), the
+  measured share of the time, the **dynamics** (median over the valid minutes of L10 − L90: a few
+  dB for steady traffic, more for a quiet street with bursts) and any interruptions. The night
+  list shows the hum and events/h for every night, plus the dynamics.
 
 The chart code is in `chart/`: `Windows.kt` (window arithmetic), `ChartModel.kt` (data → model:
 series, runs, gaps, y range, events, summary), `ChartGeometry.kt` (pixels, hit testing),
@@ -128,6 +185,7 @@ keep the category they were given when measured:
 | `voices` | Stimmen | Speech; Conversation; Shout; Yell; Children shouting; Children playing; Crowd; Chatter; Laughter; Hubbub, speech noise, speech babble; Cheering |
 | `music` | Musik | Music; Pop/Rock/Hip hop/Electronic/Electronic dance/Dance/House music; Techno; Drum and bass; Disco; Reggae; Singing |
 | `unclassified` | Sonstiges / unklassifiziert | everything else (birds, wind, silence, …) |
+| `wind` | Wind | not a classifier category: the detector's wind flag (since v0.4.0, see [Event detection](#event-detection-detector-v2)) |
 
 A unit test fails the build if any name in the JSON does not exist exactly in the shipped label
 file (`yamnet_labels.txt`, extracted from the model's own metadata).
@@ -301,8 +359,12 @@ one) can be corrected afterwards:
 - **Update:** every level column (minutes: LAeq, LAFmax, LAFmin, L1, L10, L50, L90; events:
   LAFmax, SEL, background) is shifted by `new offset − offset of the original measurement`;
   `calibrated` becomes true, `calibration_id`/`calibration_offset_db` are those of the new
-  calibration. Event threshold (relative to the background), the stored floor `min_level_db` (the
-  floor in force at the time, on the original scale) and `event_count` stay as recorded.
+  calibration. Event threshold (relative to the background or the local floor), the stored floor
+  `min_level_db` (the floor in force at the time, on the original scale), `event_count`,
+  `wind_event_count` and the event features that are differences (excess, rise, decay, …) stay as
+  recorded. The local floor (v0.4.0) is a level and moves too, without an `orig_` column: for
+  events it is `LAFmax − excess`, for minutes it is shifted by the difference of the offsets stored
+  with the minute, so it does not compound either.
 - **Originals are kept and corrections never compound:** the first re-evaluation copies the stored
   levels into `orig_*` and records the calibration they were measured with in
   `recalibrated_from_id` (its id, or `default`) and `recalibration_offset_db`. Every later
@@ -325,7 +387,10 @@ Since v0.3.2 both files end with the re-evaluation columns (appended, the earlie
 their order): minutes `orig_laeq_db`, `orig_lafmax_db`, `orig_lafmin_db`, `orig_l1_db`,
 `orig_l10_db`, `orig_l50_db`, `orig_l90_db`, events `orig_lafmax_db`, `orig_sel_db`,
 `orig_background_db`, and in both `recalibrated_from_id`, `recalibration_offset_db`. They are empty
-for data that was never re-evaluated.
+for data that was never re-evaluated. Since v0.4.0 (appended after those): minutes `local_floor_db`,
+`wind_event_count`; events `local_floor_db`, `excess_db`, `rise_s`, `decay_s`, `jaggedness`,
+`mid_band_rise_db`, `lf_share`, `lf_flutter_db`, `wind`, `shape` (empty, `wind = false`, for events
+recorded before).
 
 ## Known limitations
 
@@ -336,7 +401,10 @@ for data that was never re-evaluated.
   for it, otherwise `VOICE_RECOGNITION`, and switches off AGC/noise suppression/echo
   cancellation where Android allows it. Some phones still apply processing; calibrate per source.
 - **Wind** causes large false low-frequency levels. Shield the phone; don't measure in strong
-  wind.
+  wind. Since v0.4.0 events that look like wind are flagged and not counted, but the levels (LAeq,
+  L90 …) still contain the wind. The wind rule was derived from one night at one window and is
+  not validated elsewhere; a sharp sub-second broadband impulse (a door slam) can also have a
+  high LF flutter and be flagged as wind.
 - **Behind glass vs open window**: these are different measurements; note which one you made.
   Reflections from the façade raise levels right at a wall by up to ~3 dB.
 - **No tram class.** AudioSet has no "tram" class. Zürich's trams (a major noise source,
@@ -350,6 +418,8 @@ for data that was never re-evaluated.
   dominate.
 - **Duration of events** is measured on the Fast-weighted level, so it includes the decay tail
   (≈ 35 dB/s); a 2 s pass-by 25 dB above background is reported as ≈ 2.7 s.
+- **A lasting level step** (the hum rises by more than the excess and stays) is one event of up to
+  300 s, because the floor is frozen during an event; afterwards the floor has caught up.
 - **Timing**: sample time is anchored to the wall clock when the first audio block arrives and
   re-anchored once per minute if the audio clock has drifted by more than 0.5 s (the number of
   corrections is stored per minute as `clock_corrections`). Timestamps are therefore accurate to
@@ -366,9 +436,21 @@ for data that was never re-evaluated.
 - Settings changes (including the classifier level adjustment) apply from the next start of a measurement.
 - Calibration must be done with the app in the foreground; leaving the app aborts the measurement.
 
-## Status of v0.3.3
+## Status of v0.4.0
 
-v0.3.3 is a public **test version**: v0.3.2 plus a clearer measurement notification («Mikrofon
+v0.4.0 (engine «detector v2», both flavours, versionCode 9) is **not published**; stadtlaerm.ch
+stays on v0.3.3 until it has been tried on a phone. It changes the event detection (local floor,
+excess, features, wind flag; see [Event detection](#event-detection-detector-v2)), the database
+(v4 → v5), the CSV columns and the summaries (hum vs bursts). Verified on the JVM only: unit tests,
+the migration against SQLite, an offline replay of three synthetic WAV fixtures through the engine
+(`dsp/src/test/.../ReplayTest.kt`; `./gradlew :dsp:replay --args="clip.wav"` replays any 16 or
+48 kHz mono WAV, e.g. Labor clips, and prints events and minutes as CSV — note that the local floor
+needs 5 s of history, so for the Labor clips' 5 s pre-roll use `--min-history 3`) and Paparazzi
+renders. Not yet checked: the thresholds on real nights other than the one they were derived from,
+the CPU cost of the extra filters on a phone, the settings screen and the one-time migration
+notice on a device.
+
+v0.3.3 was a public **test version**: v0.3.2 plus a clearer measurement notification («Mikrofon
 aktiv – Messung läuft», visible in the status bar) and the setting «Messung beenden, wenn die App
 geschlossen wird»; the code was split into two product flavours (`public` and the unpublished
 [Labor build](#labor-build)) without any change to the measurement. v0.3.2: v0.3.1 (chart, event
@@ -391,7 +473,7 @@ and the update check have not been tried on a phone yet.
 
 ## Labor build
 
-«Stadtlärm Labor» (`ch.stadtlaerm.labor`, version name `0.3.4-labor`) is a separate app built
+«Stadtlärm Labor» (`ch.stadtlaerm.labor`, version name `0.4.0-labor`) is a separate app built
 from the same code that can **record audio**, to debug the event detector and the sound-source
 classifier with real sound — e.g. why highway passes of cars and motorbikes (3–10 s, ≈ 13 dB above
 a quiet background) are not recognised: each clip comes with the classifier's per-second results
@@ -458,13 +540,18 @@ if the window was ignored because it touched silenced/invalid audio, then `ignor
 decision on the *average* of the windows overlapping it (as in the public app).
 
 **Manifest lines** (`type`): `session_start` (device model, Android version, app version, audio
-source, encoding, effects, calibration id/offset, event threshold and floor, classifier settings,
-recording settings), `clock` (the engine's sample clock:
+source, encoding, effects, calibration id/offset, the detector settings — since 0.4.0 `detector:
+"v2"`, `eventExcessDb`, `localFloorWindowS`, `eventFloorDb`, `windLfShareMin`, `windFlutterMinDb`
+(before: `eventThresholdDb`) —, classifier settings, recording settings), `clock` (the engine's sample clock:
 input sample *s* at 48 kHz, counted from the start of the measurement, was recorded at
 `anchorEpochMs + (s − anchorSample)·1000/48000`; a new line after every clock correction, with
 `correctionMs`), `clip` (event id, event start/end ISO-8601 with zone, LAFmax, SEL, background,
 category, top-3 labels, file, `offsetOfEventStartInClipMs`, `truncated`, sample indices,
-`classifierTrace`: the classifier results whose window ends inside the clip),
+`classifierTrace`: the classifier results whose window ends inside the clip; since 0.4.0 also
+`features`, see below), `event` (since 0.4.0, every event — also without a clip — when it is
+complete: start/end time and input samples and `features` = `localFloorDb`, `excessDb`, `riseS`,
+`decayS`, `jaggedness`, `midBandRiseDb`, `lfShare`, `lfFlutterDb`, `wind`, `shape`, as defined in
+[Event detection](#event-detection-detector-v2); match to `clip` lines by `eventStartSample`),
 `continuous_open` / `continuous_close` (file, start time, `startInputSample`, codec, sample rate;
 16 kHz sample *j* of the file = input sample `startInputSample + 3·j + 2`), `gap` (blocks the
 encoder could not keep up with, filled with silence so the mapping holds), `storage_full`, and
@@ -584,11 +671,13 @@ dsp/   pure Kotlin/JVM, no Android dependencies — shared with the planned ESP3
   FrequencyWeighting.kt   A- and Z-weighting (bilinear biquads, 0 dB at 1 kHz)
   TimeWeighting.kt        Fast/Slow exponential averaging
   MeasurementEngine.kt    the pipeline: ticks, seconds, minutes, events, classifier hook
-  EventDetector.kt        background (L90/5 min) + hysteresis event detector, SEL
+  EventDetector.kt        local-floor + excess hysteresis event detector, SEL; 5-min background (L90)
+  EventFeatures.kt        local floor (L90/30 s), band splits, event features, wind rule, shape
   Resampler.kt            48 → 16 kHz anti-aliasing FIR (241 taps, ≥ 70 dB) + ring buffer
   classify/               SoundClassifier interface, category mapping, input normalisation
   calibration/            calibration measurement, tone check (FFT), offset math
   Nights.kt, Csv.kt       night summaries, CSV export
+  src/test/.../Replay.kt  offline replay of WAV files through the engine (fixtures: src/test/resources/replay/)
 chart/ Android library: the history chart (drawing model, Compose Canvas) and the app theme;
        JVM tests and Paparazzi renders
 app/   Android: AudioRecord capture, foreground service, LiteRT YAMNet, Room, Compose UI

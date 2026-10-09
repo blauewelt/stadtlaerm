@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.4.0 — 2026-10-09 (detector v2; both flavours, versionCode 9, not published)
+
+Why: in one recorded night (528 event clips, uncalibrated) the 5-minute L90 sat a median 3.1 dB
+below the level right around an event, so «background + 10 dB» fired on nothing in particular and a
+third of the events barely exceeded the local hum; 14 % of the events were wind on the microphone;
+and the constant highway hum was mixed into the event figures.
+
+### Event detection
+
+- **Local floor:** L90 of LAF over the trailing 30 s (setting «Lokaler Hintergrund: Fenster»,
+  10–60 s), updated every 125 ms, frozen while an event runs. Events start at **local floor +
+  excess** (setting «Ereignis-Schwelle über lokalem Hintergrund», default 6.5 dB, 3–20 dB in 0.5 dB
+  steps), end 3 dB below, need ≥ 0.5 s and the event floor (unchanged, 30 dB(A)), at most 300 s.
+  Detection starts after 5 s of history (was 30 s). The 5-min background is still computed, stored
+  with every event and shown live. The old setting is migrated once: excess = max(3, threshold −
+  3.5) (10 → 6.5, 7 → 3.5); a changed threshold is announced once (Messen and Einstellungen).
+- **Features per event:** excess over the floor, rise and decay time (10↔90 %), jaggedness,
+  A-weighted 250 Hz–4.5 kHz rise against the 5 s before, unweighted 20–200 Hz energy share and
+  low-frequency flutter (definitions in README → Event detection). Computed with five 2nd-order
+  Butterworth sections per sample and per-tick sums (no FFT, no allocation per sample). For the
+  decay the level is followed up to 5 s past the end; events are reported after that.
+- **Wind flag:** `lf_share ≥ 0.95` or `lf_flutter_db ≥ 3.8` (both under «Experten»). Wind events are
+  stored with category «Wind» (`wind`) and exported, but excluded from events/h, `event_count`, the
+  category counts and highlights, the loudest event and the night's events. The chart draws them as
+  small hollow grey dots («Wind (ausgeschlossen)», can be hidden).
+- **Shape** (informational): hump, jagged, impulse or long.
+
+### Data
+
+- Database v5 (migration from v4, tested against SQLite): events gain `local_floor_db`, `excess_db`,
+  `rise_s`, `decay_s`, `jaggedness`, `mid_band_rise_db`, `lf_share`, `lf_flutter_db`, `wind`, `shape`;
+  minutes gain `local_floor_db` (median over the minute) and `wind_event_count`. Existing data keeps
+  its values (no features, not wind).
+- CSV exports: the same columns appended at the end. `threshold_db` is now the excess over the local
+  floor (before: the threshold over the 5-min background). `event_count` counts bursts without wind.
+- Re-evaluation with a later calibration also moves the local floor (no new `orig_` columns needed).
+
+### Display
+
+- Chart summary tiles: «Hintergrund (L90)» (the hum: median of the minutes' L90), «Ereignisse»
+  (bursts per hour without wind, «n Wind ausgeschlossen» below), «Lautestes» (loudest burst). The
+  line below has the LAeq, the number of events (and of the highlighted category), coverage,
+  dynamics and gaps. The night list shows the hum and events/h for every night and the number of
+  excluded wind events. The tooltip of an event shows the local floor and excess, and the shape
+  (wind: LF share and flutter). Messen shows the live local floor.
+
+### «Stadtlärm Labor» (`0.4.0-labor`)
+
+- `AudioTap.onEventEnded` carries the features; the manifest gets an `event` line for every event
+  (also without a clip), a `features` object in `clip` lines, and the detector settings in
+  `session_start` (`eventExcessDb`, `localFloorWindowS`, wind thresholds instead of
+  `eventThresholdDb`). Clips are cut back to end + 5 s when the end is reported late.
+
+### Development
+
+- Offline replay harness (`dsp/src/test/.../Replay.kt`): WAV (16 kHz upsampled ×3 polyphase, or
+  48 kHz) → engine → events/minutes CSV; three synthetic fixtures (smooth hump, LF wind thump,
+  steady tone) with expected outputs; `./gradlew :dsp:replay --args="clip.wav"` for real clips.
+
 ## 0.3.4 — 2026-10-08
 
 ### Public app (`ch.stadtlaerm.app`, not published)
