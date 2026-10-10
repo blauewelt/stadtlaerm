@@ -18,7 +18,7 @@
   <p class="claim">Lärm messen, wo er stört.</p>
   <p class="lead">Ein offenes Messnetz für Strassenlärm, von Anwohnerinnen und Anwohnern für Anwohnerinnen und Anwohner, beginnend in Zürich.</p>
   <a class="button" href="download/stadtlaerm.apk" download type="application/vnd.android.package-archive">App herunterladen (Android, Testversion)</a>
-  <p class="button-note">Version 0.4.0, 18,4 MB, für Android 8 oder neuer. <a href="#installation">So wird sie installiert.</a></p>
+  <p class="button-note">Version 0.5.0, 18,4 MB, für Android 8 oder neuer. <a href="#installation">So wird sie installiert.</a></p>
 
   <figure class="night">
     <picture>
@@ -42,10 +42,17 @@
   </ul>
 </section>
 
+<section id="karte">
+  <h2>Lärmkarte</h2>
+  <p>Die gemeinsame Karte zeigt pro Hektare (100&nbsp;×&nbsp;100&nbsp;m) den mittleren Pegel der Nacht, wie stark er schwankt und wie viele laute Töffs und Poser pro Stunde vorbeifahren. Genauer wird kein Standort gezeigt. Sie wird aus der App gespeist: Seit Version 0.5.0 können Sie unter «Einstellungen → Messwerte teilen» freiwillig mitmachen. Das Teilen ist ausgeschaltet, bis Sie es selbst einschalten.</p>
+  <p><a href="karte.html">Zur Lärmkarte</a></p>
+  <p class="small">Die Kartenseite ist die einzige Seite, die etwas von anderen Servern lädt: die Kartenbilder von swisstopo und die Messwerte von api.stadtlaerm.ch.</p>
+</section>
+
 <section id="datenschutz">
   <h2>Datenschutz</h2>
-  <p>Die App speichert und überträgt kein Audio: Der Ton wird nur im Arbeitsspeicher ausgewertet, auf dem Telefon bleiben nur Pegel und Statistiken. Die App hat überhaupt keine Internet-Berechtigung, und auch die Erkennung der Lärmquelle läuft auf dem Telefon. Der Quellcode ist offen, jede und jeder kann ihn auf <a href="https://github.com/blauewelt/stadtlaerm">GitHub</a> nachprüfen, erklärt in <a href="https://github.com/blauewelt/stadtlaerm/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
-  <p>Auch diese Website hält sich daran: Sie setzt keine Cookies und lädt nichts von Dritten, also keine Schriften, keine Statistikdienste und keine fremden Bilder. Mehr dazu in der <a href="datenschutz.html">Datenschutzerklärung</a>.</p>
+<p>Die App speichert und überträgt kein Audio: Der Ton wird nur im Arbeitsspeicher ausgewertet, auf dem Telefon bleiben nur Pegel und Statistiken. Auch die Erkennung der Lärmquelle läuft auf dem Telefon. Bis Version 0.4.0 hatte die App überhaupt keine Internet-Berechtigung. Seit Version 0.5.0 nutzt sie das Internet für genau eine Sache, das freiwillige «Messwerte teilen» für die Lärmkarte: Es ist ausgeschaltet, bis Sie es selbst einschalten, sendet nur Pegel und Ereignisse mit der Hektare (100&nbsp;×&nbsp;100&nbsp;m), nie Audio und nie den genauen Standort, nur an den Server des Projekts in der Schweiz (api.stadtlaerm.ch), und Sie können die Daten dort jederzeit aus der App löschen. Der Quellcode ist offen, jede und jeder kann ihn auf <a href="https://github.com/blauewelt/stadtlaerm">GitHub</a> nachprüfen, erklärt in <a href="https://github.com/blauewelt/stadtlaerm/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
+  <p>Auch diese Website hält sich daran: Sie setzt keine Cookies und lädt nichts von Dritten, also keine Schriften, keine Statistikdienste und keine fremden Bilder. Einzige Ausnahme ist die <a href="karte.html">Lärmkarte</a>, die die Kartenbilder von swisstopo lädt. Mehr dazu in der <a href="datenschutz.html">Datenschutzerklärung</a>.</p>
 </section>
 
 <section id="installation">
@@ -61,11 +68,11 @@
   </ol>
 
   <div class="note">
-    <p>Wer schon eine frühere Testversion installiert hat, muss sie zuerst deinstallieren, weil die neue Version anders signiert ist. Vorher unter «Daten» die Messwerte als CSV exportieren, sonst gehen sie verloren.</p>
+    <p>Ab Version 0.2.0 installiert sich die neue Version über die alte und behält die Messwerte. Nur wer noch eine Version 0.1.x hat, muss sie zuerst deinstallieren, weil diese anders signiert war; vorher unter «Daten» die Messwerte als CSV exportieren, sonst gehen sie verloren.</p>
   </div>
 
   <dl class="facts">
-    <dt>Version</dt><dd>0.4.0 (Testversion)</dd>
+    <dt>Version</dt><dd>0.5.0 (Testversion)</dd>
     <dt>Grösse</dt><dd>18,4 MB</dd>
     <dt>Android</dt><dd>8.0 oder neuer</dd>
     <dt>SHA-256</dt><dd><code class="hash">5b2a697d91f93abd8c1c53b868672bb49dd1811d32cc226f0c03029b47dc5a06</code></dd>
@@ -87,7 +94,7 @@
 <section id="stand">
   <h2>Stand des Projekts</h2>
   <ul class="status">
-    <li><strong>App für Android</strong>Testversion 0.4.0. Sie ist noch nicht auf vielen Telefonen erprobt; Rückmeldungen helfen.</li>
+    <li><strong>App für Android</strong>Testversion 0.5.0. Sie ist noch nicht auf vielen Telefonen erprobt; Rückmeldungen helfen.</li>
     <li><strong>Sensor fürs Fensterbrett</strong>In Entwicklung: ein kleines Messgerät mit Solarzelle, das fest am Fenster misst, mit derselben Messmethode und Kalibrierung wie die App.</li>
     <li><strong>Stadt Zürich</strong>Austausch mit der Stadt Zürich (Umwelt- und Gesundheitsschutz) ist aufgenommen.</li>
   </ul>
@@ -104,6 +111,7 @@
 <footer class="wrap">
   <ul>
     <li>Ein Projekt von Christian Frank, Zürich</li>
+    <li><a href="karte.html">Lärmkarte</a></li>
     <li><a href="datenschutz.html">Datenschutz</a></li>
     <li><a href="update.html">Update prüfen</a></li>
     <li><a href="https://github.com/blauewelt/stadtlaerm">Quellcode</a></li>

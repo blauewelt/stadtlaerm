@@ -34,6 +34,9 @@ val buildDate: String = (System.getenv("SOURCE_DATE_EPOCH")?.toLongOrNull()
     ?.let { Instant.ofEpochSecond(it).atZone(ZoneId.of("Europe/Zurich")).toLocalDate() }
     ?: LocalDate.now(ZoneId.of("Europe/Zurich"))).toString()
 
+// Base URL of the contribution server (server/DESIGN.md §8). One host, HTTPS only.
+val stadtlaermApi: String = (findProperty("stadtlaerm.api") as String?)?.trimEnd('/') ?: "https://api.stadtlaerm.ch"
+
 android {
     namespace = "ch.stadtlaerm.app"
     compileSdk = 35
@@ -42,9 +45,15 @@ android {
         applicationId = "ch.stadtlaerm.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.4.0"
+        versionCode = 11
+        versionName = "0.5.0"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
+        // The one host the opt-in upload «Messwerte teilen» talks to (server/DESIGN.md §4). Only
+        // app/src/main/kotlin/ch/stadtlaerm/app/upload/UploadClient.kt opens connections, and only
+        // to this base URL. Override for a local test server with -Pstadtlaerm.api=https://…
+        buildConfigField("String", "STADTLAERM_API", "\"$stadtlaermApi\"")
+        // Whether this edition offers «Messwerte teilen» at all (public: yes; labor: no).
+        buildConfigField("boolean", "UPLOAD_AVAILABLE", "true")
     }
 
     signingConfigs {
@@ -75,6 +84,8 @@ android {
             dimension = "edition"
             applicationId = "ch.stadtlaerm.labor"
             versionNameSuffix = "-labor"
+            // Labor keeps no network access (its manifest removes INTERNET): no upload UI, no worker.
+            buildConfigField("boolean", "UPLOAD_AVAILABLE", "false")
         }
     }
 
@@ -147,6 +158,10 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     implementation("com.google.ai.edge.litert:litert:1.4.0")
+
+    // Scheduling of the opt-in upload (hourly + after a measurement stops). AndroidX, Apache-2.0.
+    // It does no networking itself; not an analytics or crash-reporting SDK.
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation(kotlin("test"))

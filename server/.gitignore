@@ -1,0 +1,8 @@
+# Local runtime data and secrets
+.env
+data/
+
+# Python build and tool caches
+*.egg-info/
+.pytest_cache/
+.ruff_cache/

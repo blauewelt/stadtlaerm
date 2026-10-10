@@ -28,6 +28,10 @@ object EditionClips {
 
 /** Edition-specific UI. Public: nothing. */
 object EditionUi {
+    /** First bullet of «Über Stadtlärm & Datenschutz»: what this edition does with audio. */
+    const val ABOUT_AUDIO =
+        "• Audio verlässt nie den Arbeitsspeicher: höchstens ca. 1 s wird für die Erkennung gepuffert, nichts wird gespeichert, protokolliert oder gesendet."
+
     /** Hosted once at the app root (Labor: the clip player). */
     @Composable
     fun Overlay() {}

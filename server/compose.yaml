@@ -1,0 +1,37 @@
+# docker compose up -d   (from server/, with a .env next to this file; see .env.example)
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_PATH: /data/stadtlaerm.sqlite
+      MAP_DIR: /data/map
+      TRUST_PROXY: "1"  # behind Caddy: take the client IP from X-Forwarded-For
+    volumes:
+      - data:/data
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_HOST: ${API_HOST:-api.stadtlaerm.ch}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  data:
+  caddy_data:
+  caddy_config:

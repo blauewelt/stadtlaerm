@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https://wmts.geo.admin.ch; connect-src https://api.stadtlaerm.ch; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>Lärmkarte – Stadtlärm</title>
+<meta name="description" content="Nächtlicher Strassenlärm in Zürich, gemessen von Anwohnerinnen und Anwohnern: mittlerer Pegel, Dynamik und laute Einzelereignisse pro Hektar.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b5cad'/%3E%3Cpath d='M4 22h5l3-6 3 3 3-13 3 13 3-4h4' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css?v=86045619">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=a7837102">
+<link rel="stylesheet" href="map/karte.css?v=85d11946">
+<script src="vendor/leaflet/leaflet.js?v=db49d009" defer></script>
+<script src="map/lv95.js?v=ca0eeb2b" defer></script>
+<script src="map/model.js?v=7cf09e34" defer></script>
+<script src="map/karte.js?v=0aeee71d" defer></script>
+</head>
+<body class="karte-page">
+
+<header class="wrap wide page-head">
+  <a class="home" href="./">Stadtlärm</a>
+  <h1>Lärmkarte</h1>
+  <p class="lead">Nächtlicher Strassenlärm in Zürich, gemessen von Anwohnerinnen und Anwohnern mit der Stadtlärm-App. Jedes Feld ist eine Hektare (100&nbsp;×&nbsp;100&nbsp;m); genauer wird kein Standort gezeigt.</p>
+  <p class="small" id="quellen">Diese Seite lädt die Kartenbilder von swisstopo und die Messwerte von api.stadtlaerm.ch, sonst nichts von anderen Servern.</p>
+</header>
+
+<main class="wrap wide">
+
+<div class="controls">
+  <fieldset class="metric" id="metric">
+    <legend>Wert</legend>
+    <label><input type="radio" name="metric" value="laeq" checked><span>Nacht-LAeq</span></label>
+    <label><input type="radio" name="metric" value="dynamics"><span>Dynamik</span></label>
+    <label><input type="radio" name="metric" value="events"><span>Ereignisse/h</span></label>
+    <label><input type="radio" name="metric" value="loud"><span>Töff &amp; Poser/h</span></label>
+  </fieldset>
+
+  <div class="datebar" role="group" aria-label="Nacht wählen">
+    <button type="button" id="prev" class="step" aria-label="Eine Nacht zurück" disabled>‹</button>
+    <p id="night" aria-live="polite">Nacht wird geladen …</p>
+    <button type="button" id="next" class="step" aria-label="Eine Nacht vor" disabled>›</button>
+  </div>
+</div>
+
+<p id="status" class="status-line" role="status" hidden></p>
+
+<div class="mapgrid">
+  <div id="karte" class="map" data-api="https://api.stadtlaerm.ch/v1/map/" role="region" aria-label="Karte der Messwerte (Pfeiltasten verschieben, Plus und Minus zoomen)"></div>
+
+  <aside id="card" class="card" hidden aria-labelledby="card-title" tabindex="-1">
+    <div class="card-head">
+      <h2 id="card-title">Hektare</h2>
+      <button type="button" class="card-close" id="card-close" aria-label="Karte schliessen">×</button>
+    </div>
+    <div class="card-body" id="card-body"></div>
+  </aside>
+
+  <div class="legend" id="legend">
+    <p class="legend-title" id="legend-title"></p>
+    <div class="legend-bar" id="legend-bar" aria-hidden="true"></div>
+    <div class="legend-ticks" id="legend-ticks"></div>
+    <ul class="legend-lsv" id="legend-lsv"></ul>
+    <p class="legend-note" id="legend-note"></p>
+    <ul class="legend-keys">
+      <li><span class="key key-dashed" aria-hidden="true"></span>gestrichelter Rand: unkalibriert</li>
+      <li><span class="key key-empty" aria-hidden="true"></span>leer: in dieser Nacht keine Messung, aber in den 30 Nächten davor</li>
+    </ul>
+  </div>
+</div>
+
+<details class="celllist" id="celllist">
+  <summary>Alle Hektaren dieser Nacht als Liste</summary>
+  <ol id="celllist-items"></ol>
+</details>
+
+<p class="small" id="network"></p>
+
+<section id="erklaerung">
+  <h2>Was die Karte zeigt</h2>
+  <dl class="explain">
+    <dt>Nacht-LAeq</dt>
+    <dd>Der energetisch gemittelte Schallpegel der Nacht von 22 bis 6 Uhr, in dB(A). Mehrere Geräte in derselben Hektare werden energetisch gemittelt.</dd>
+    <dt>Dynamik</dt>
+    <dd>Wie stark der Pegel innerhalb einer Minute schwankt: der Median über alle Minuten von L10&nbsp;−&nbsp;L90. Wenige dB bei gleichmässigem Verkehr, mehr bei einer ruhigen Strasse mit einzelnen lauten Fahrzeugen.</dd>
+    <dt>Ereignisse/h</dt>
+    <dd>Laute Einzelereignisse pro Stunde Messzeit, alle Quellen zusammen.</dd>
+    <dt>Töff &amp; Poser/h</dt>
+    <dd>Nur die Ereignisse, die die App als Motorrad oder hochdrehenden Motor erkannt hat.</dd>
+    <dt>unkalibriert</dt>
+    <dd>Mindestens ein Telefon in der Hektare wurde nicht mit einem Schallpegelmesser verglichen. Seine Pegel können um mehrere Dezibel daneben liegen; die Zahl der Ereignisse ist davon weniger betroffen.</dd>
+  </dl>
+  <p>Die Werte stammen von Telefonen am Fenster oder auf dem Balkon, nicht von amtlichen Messstationen. Wie gemessen wird, steht auf der <a href="./#app">Startseite</a> und auf <a href="https://github.com/blauewelt/stadtlaerm">GitHub</a>.</p>
+</section>
+
+</main>
+
+<footer class="wrap wide">
+  <ul>
+    <li>Ein Projekt von Christian Frank, Zürich</li>
+    <li><a href="./">Startseite</a></li>
+    <li><a href="datenschutz.html">Datenschutz</a></li>
+    <li><a href="https://github.com/blauewelt/stadtlaerm">Quellcode</a></li>
+    <li>Kartenbilder: © swisstopo</li>
+  </ul>
+</footer>
+
+</body>
+</html>

@@ -125,6 +125,14 @@ object EditionClips {
 
 object EditionUi {
     /**
+     * First bullet of «Über Stadtlärm & Datenschutz»: what this edition does with audio. The public
+     * text («Audio verlässt nie den Arbeitsspeicher …») would be false here.
+     */
+    const val ABOUT_AUDIO =
+        "• Labor-Version: Audio kann – nur wenn du es einschaltest – als Clips und Stundendateien auf diesem Telefon " +
+            "gespeichert werden, dazu ein Protokoll der Erkennung. Nichts davon wird gesendet: diese Version hat keine Internet-Berechtigung."
+
+    /**
      * Hosted once at the app root: the clip player sheet. It is closed (and its MediaPlayer
      * released) whenever a measurement starts or stops.
      */

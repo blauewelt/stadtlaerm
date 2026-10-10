@@ -12,11 +12,15 @@ code. See [Labor-Build](#labor-build) below.
 
 1. **Raw audio never touches disk.** No code path writes samples to a file, a database, the
    cache, shared preferences or the clipboard.
-2. **Raw audio never leaves the app process.** The manifest has **no `INTERNET` permission**
-   (it is explicitly removed with `tools:node="remove"`, so a library cannot add it back), and
-   there is no network code. Data leaves the phone only when *you* export a CSV/JSON file and
-   share it through the Android share menu. «Nach Update suchen» (since v0.3.1) only hands a
-   link to the browser; see "The website" below.
+2. **Raw audio never leaves the app process.** There is no code that sends audio anywhere. Up to
+   v0.4.0 (the version published on stadtlaerm.ch) the manifest has no `INTERNET` permission at
+   all. **From v0.5.0** the public app has
+   `INTERNET` for exactly one purpose: the opt-in upload «Messwerte teilen» (see
+   [«Messwerte teilen»](#messwerte-teilen-opt-in-upload-from-v050) below), which is **off until you
+   switch it on**, sends only the minute and event *numbers* listed there, to one host
+   (`api.stadtlaerm.ch`), through one class (`upload/UploadClient.kt`). Otherwise data leaves the
+   phone only when *you* export a CSV/JSON file and share it through the Android share menu.
+   «Nach Update suchen» (since v0.3.1) only hands a link to the browser; see "The website" below.
 3. **Raw audio is never logged.** The only log line in the audio path reports an exception
    class name when the microphone cannot be opened.
 4. **Raw audio is held only briefly, in memory, in small fixed-size buffers.** The largest is
@@ -27,7 +31,8 @@ code. See [Labor-Build](#labor-build) below.
    the top-3 AudioSet label *names and scores* per event, and calibration records. None of these
    can be turned back into audio.
 6. **No analytics, no crash reporting, no cloud backup.** `android:allowBackup="false"`, and
-   the data-extraction rules exclude everything from cloud backup and device transfer.
+   the data-extraction rules exclude everything from cloud backup and device transfer. No
+   third-party SDK talks to the network: the upload uses Android's own `HttpURLConnection`.
 
 ## Where audio is handled in the code
 
@@ -58,10 +63,40 @@ accordingly before you share them.
 
 - `aapt2 dump permissions stadtlaerm.apk` lists exactly: `RECORD_AUDIO`,
   `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `WAKE_LOCK`
-  (plus AndroidX's internal `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`). No `INTERNET`.
-- Search the source of the public app: `grep -rn "FileOutputStream\|openFileOutput\|Socket\|HttpURLConnection" android/app/src/main android/app/src/public android/dsp/src/main`
-  returns nothing in the audio path (`android/app/src/labor/` is the separate Labor build, see below). The only file writes are the CSV/JSON exports in
+  (plus AndroidX's internal `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`). Up to v0.4.0: no
+  `INTERNET`. From v0.5.0 additionally `INTERNET` and `ACCESS_NETWORK_STATE`, both only for
+  «Messwerte teilen» (below); still no location, Wi-Fi-state, boot or storage permission.
+- Search the source of the public app: `grep -rn "FileOutputStream\|openFileOutput\|Socket\|HttpURLConnection\|openConnection\|URL(" android/app/src/main android/app/src/public android/dsp/src/main`
+  finds network code in exactly one file, `android/app/src/main/kotlin/ch/stadtlaerm/app/upload/UploadClient.kt`
+  (the upload), and nothing in the audio path (`android/app/src/labor/` is the separate Labor build, see below). The only file writes are the CSV/JSON exports in
   `android/app/.../data/Repositories.kt` and `android/app/.../ui/CalibrationViewModel.kt`, which contain aggregates only.
+
+## «Messwerte teilen» (opt-in upload, from v0.5.0)
+
+The shared noise map ([server/DESIGN.md](server/DESIGN.md), its §2 is the privacy contract) is
+fed by phones whose owners switched on **Einstellungen → Messwerte teilen**. The rules, and where
+the code keeps them:
+
+| Rule | How |
+|---|---|
+| **Off by default**, one explicit opt-in | `UploadSnapshot.enabled = false`; the switch is enabled only after the explanation screen was read and a hectare was chosen (`Uploader.enable()`, `ui/ShareScreen.kt`). Switching off cancels every scheduled job at once (`UploadModule.applySchedule()`); a running upload stops before its next request. |
+| **What is sent** | The minute records (levels, percentiles, valid time, event count, category shares, calibration id/offset, audio source, clock corrections) and event records (start, duration, LAFmax, SEL, background, threshold, floor, category and its score, calibration) of `upload/Payloads.kt`, plus the placement of §4.2 (hectare, placement, floor, street side, phone model, audio source, calibration, optional note). Exactly the bodies of DESIGN.md §4. Events flagged as wind on the microphone are not sent (the app leaves them out of its own counts too), and a minute's event count is the count without wind. |
+| **What is never sent** | Audio (none exists). The top-3 raw AudioSet labels of events (`topLabelsJson` is not read by `Payloads`). The `orig_*`/re-evaluation columns. The detector-v2 features of events and minutes (local floor, excess, rise/decay, LF share and flutter, shape, wind flag, wind event count). Coordinates: the placement step turns what you type into an LV95 hectare id on the phone (`upload/CellInput.kt`, `dsp/.../geo/Lv95.kt`); the typed text is neither stored nor sent. GPS is never read; there is no location permission. No name, account, phone number, advertising id or Android id. |
+| **Where it goes** | One host, `BuildConfig.STADTLAERM_API` = `https://api.stadtlaerm.ch` (the project's server in Switzerland, DESIGN.md §8). HTTPS only (`UploadClient` refuses any other base URL except a loopback test server), redirects are not followed, no cookies, and the User-Agent is just `Stadtlaerm` (no phone model or Android build). |
+| **When** | After every full hour and shortly after a measurement stops (WorkManager), only over Wi-Fi/unmetered networks unless «nur über WLAN» is switched off. At the first opt-in the last 7 days are included (the screen says so); afterwards nothing measured while sharing was off is ever sent. |
+| **Identity** | At the first upload the server issues a random device id and a secret token (DESIGN.md §4.1). The token is stored encrypted with a key held in the Android Keystore; the id is never shown on the public map. «Neue Kennung» deletes the server data and starts a fresh id. |
+| **Delete means delete** | «Meine Daten auf dem Server löschen» sends `DELETE /v1/devices/{id}` and waits for the server's `204` (sent only after every row is gone, DESIGN.md §2.4); only then are id and token forgotten on the phone and sharing switched off. On an error nothing changes and the screen says so. |
+
+`ACCESS_NETWORK_STATE` is required by Android for background jobs that wait for a network (and
+for «nur über WLAN»); it tells the app whether a connection is up and metered, not which network.
+`ACCESS_WIFI_STATE` and `RECEIVE_BOOT_COMPLETED` (which WorkManager would add) are removed in the
+manifest.
+
+**How to verify:** the grep above (one network file); `android/app/src/test/.../upload/UploadTest.kt`
+checks the exact request bodies against a local fake server (no labels, no originals, no
+coordinates, gzip, bearer token, the fixed User-Agent, nothing sent while off); and on a phone,
+Android's per-app data usage (on a Pixel: *Settings → Apps → Stadtlärm → Mobile data & Wi-Fi*)
+shows the app's traffic, which stays at zero while sharing is off.
 
 ## Labor-Build
 
@@ -94,7 +129,9 @@ is not compiled into the public APK at all. The shared code only contains:
   callback. The public `EditionClips` provides no references and no callback, so the public chart
   never shows a play button; the clip index and the player (MediaPlayer) live in `app/src/labor/`.
 
-The public manifest and permissions are unchanged (no `INTERNET`, no storage permission).
+The Labor build has no network access: its manifest (`app/src/labor/AndroidManifest.xml`) removes
+`INTERNET` and `ACCESS_NETWORK_STATE`, and «Messwerte teilen» does not exist in it
+(`BuildConfig.UPLOAD_AVAILABLE = false`). No storage permission in either build.
 
 **How to verify** (any public build, e.g. `app/build/outputs/apk/public/release/app-public-release.apk`):
 
@@ -117,7 +154,8 @@ The public manifest and permissions are unchanged (no `INTERNET`, no storage per
    matches, and no dex string references `MediaMuxer`, `MediaCodec`, `RIFF`/`WAVE`,
    `manifest.jsonl` or the `labor` package. As a control, the same commands on the Labor APK find
    828 `ch.stadtlaerm.app.labor` entries and 98 matching strings.
-3. `aapt2 dump permissions` lists the same permissions as before (see «How to verify» above).
+3. `aapt2 dump permissions` lists the permissions of «How to verify» above; for the Labor APK
+   without `INTERNET` and `ACCESS_NETWORK_STATE`.
 
 **What the Labor build records** (only after «Einstellungen → Labor → Audio während der Messung
 aufzeichnen» is switched on and confirmed; off by default): event clips (WAV, 16 kHz, 5 s before to
@@ -134,11 +172,21 @@ knows about it.
 ## The website
 
 [stadtlaerm.ch](https://stadtlaerm.ch) (source in `docs/`) is static HTML and CSS. It sets no
-cookies, runs no analytics and loads nothing from third parties: no web fonts, no CDNs, no
-external images. The only script is inline on `update.html` (allowed by its hash in the
+cookies, runs no analytics and loads nothing from third parties (except the map page, below): no
+web fonts, no CDNs, no external images. The only inline script is on `update.html` (allowed by its hash in the
 Content-Security-Policy): the app opens `update.html#v=<version>&c=<versionCode>`, the browser
 does not send the part after `#` to the server, and the script compares it with the published
 version locally. It is hosted on GitHub Pages; GitHub may log visitors' IP addresses for
 technical reasons, see the
 [GitHub General Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 The German privacy page is [docs/datenschutz.html](docs/datenschutz.html).
+
+**The map page is the one exception.** `docs/karte.html` (the shared noise map, see
+[server/DESIGN.md](server/DESIGN.md) §7) loads map tiles from swisstopo
+(`wmts.geo.admin.ch`) and the published per-hectare aggregates from the project's own API host
+(`api.stadtlaerm.ch`), and nothing else; its Content-Security-Policy allows exactly these two
+hosts (`img-src` and `connect-src`) and scripts only from the site itself (vendored Leaflet,
+no inline script). It says so in one sentence above the map, and `datenschutz.html` repeats it.
+Both hosts necessarily see the visitor's IP address; the page sends no referrer and sets no
+cookies, and the API server keeps no access log. All other pages still load nothing from third
+parties.

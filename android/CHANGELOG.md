@@ -1,6 +1,58 @@
 # Changelog
 
-## 0.4.0 — 2026-10-09 (detector v2; both flavours, versionCode 9, not published)
+## 0.5.0 — unreleased (test build, versionCode 11, not published)
+
+0.5.0 = 0.4.0 (detector v2, below) + the opt-in «Messwerte teilen» for the shared noise map. The
+sharing feature was developed on the `map-design` branch as an unpublished "0.4.0" (code 10); it
+never shipped under that number. The server runs at api.stadtlaerm.ch; the website still offers
+0.4.0. No signed 0.5.0 APK exists yet.
+
+### Added by the merge
+
+- **Wind events are not shared.** Events flagged as wind by detector v2 are filtered out on the
+  phone before upload (`upload/Payloads.kt`), the same way they are left out of the app's own
+  counts. The minute field `event_count` sent to the server is detector v2's count without wind
+  (the minute's `wind_event_count` is not sent). The payload fields are unchanged
+  (server/DESIGN.md §4.3/§4.4); none of the new detector features (local floor, excess, rise,
+  decay, LF share, …) are sent. `threshold_db` in the event payload is now detector v2's excess
+  over the local floor.
+- **Labor about text:** the card «Über Stadtlärm & Datenschutz» no longer claims in the Labor
+  edition that audio never leaves the working memory; it says that Labor can store clips and hour
+  files on the phone when switched on and never sends anything (no internet permission). The
+  public text is unchanged.
+
+### Public app (`ch.stadtlaerm.app`, version 0.5.0, code 11; not yet published)
+
+In short: an opt-in «Messwerte teilen» sends the measured levels to the shared noise map — off by
+default; the `INTERNET` permission is added for exactly this. The location is placed on the phone
+to a 100 m × 100 m hectare square; «Meine Daten auf dem Server löschen» deletes everything sent;
+«Neue Kennung» starts over with a new device id. Nothing in the measurement changed.
+
+- **«Messwerte teilen» (opt-in upload for the shared noise map).** New screen
+  Einstellungen → Messwerte teilen (server/DESIGN.md §2, §4, §9): an explanation of what is sent,
+  what is never sent (audio, the precise location, name, the raw classifier labels), where it goes
+  (api.stadtlaerm.ch, Switzerland) and how to delete; the placement step (coordinates in, hectare
+  out, on the phone; placement, floor, street side, note); the switch (off by default), «Nur über
+  WLAN» (default on), «Zuletzt gesendet», the minutes still to send, «Meine Daten auf dem Server
+  löschen» and «Neue Kennung». Uploads run 5 min after every full hour and 15 s after a measurement
+  stops (WorkManager), in batches of ≤ 1440 minutes / ≤ 2000 events, resume from the last
+  acknowledged start, and never resend records the server refused.
+- **Permissions:** the public app now has `INTERNET` and `ACCESS_NETWORK_STATE`, used only by
+  `upload/UploadClient.kt` for one host. `ACCESS_WIFI_STATE` and `RECEIVE_BOOT_COMPLETED` stay
+  removed; no location permission. PRIVACY.md, the READMEs and the website say so.
+- New dependency: `androidx.work:work-runtime-ktx` 2.9.1 (AndroidX, scheduling only). The network
+  code uses the platform's `HttpURLConnection`; no third-party SDK.
+- `dsp`: `geo/Lv95.kt`, WGS84 ↔ LV95 and hectare ids, the same formulas as the map's
+  `docs/map/lv95.js`, tested against swisstopo's reference points.
+- Nothing in the measurement path changed by the sharing feature. The database schema stays at v5
+  (detector v2); the sharing feature only adds read-only queries.
+
+### «Stadtlärm Labor» (`ch.stadtlaerm.labor`, `0.5.0-labor`, never published)
+
+- No functional change: no network permission (its manifest removes `INTERNET` and
+  `ACCESS_NETWORK_STATE`), «Messwerte teilen» is not offered.
+
+## 0.4.0 — 2026-10-09 (detector v2; both flavours, versionCode 9; public app published on stadtlaerm.ch)
 
 Why: in one recorded night (528 event clips, uncalibrated) the 5-minute L90 sat a median 3.1 dB
 below the level right around an event, so «background + 10 dB» fired on nothing in particular and a
