@@ -2,7 +2,9 @@
 
 serve (default)  run the API with the background publish/retention loop
 publish          rebuild the map files (and stats.json) once and exit
-retention        run the retention job once and exit
+retention        run the retention job once (raw data older than RETENTION_DAYS → hourly rows,
+                 devices without uploads for INACTIVE_DELETE_DAYS deleted), republish if any
+                 device was deleted, and exit
 stats            print the usage counts of stats.json (computed now, nothing written)
 """
 
@@ -41,7 +43,11 @@ def main(argv: list[str]) -> int:
             stats = publish.current_stats(conn, min_devices=s.min_devices_per_cell)
             print(json.dumps(stats, ensure_ascii=False, indent=2))
         elif cmd == "retention":
-            print(json.dumps(retention.run_retention(conn, retention_days=s.retention_days)))
+            result = retention.run_retention(conn, retention_days=s.retention_days)
+            result["devices_expired"] = retention.expire_inactive(conn, inactive_days=s.inactive_delete_days)
+            if result["devices_expired"]:
+                publish.publish(conn, s.map_dir, min_devices=s.min_devices_per_cell)
+            print(json.dumps(result))
         else:
             print(__doc__, file=sys.stderr)
             return 2

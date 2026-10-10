@@ -49,6 +49,17 @@ These rules are the design. They go into PRIVACY.md and the website when the fea
    peak per hour), never as a per-second list. Device models are published only as counts
    per model over the whole network («Beteiligte Geräte»), never per cell. The usage figures
    of `stats.json` (§6.4) are likewise whole-network counts only.
+9. **Data of a silent device does not stay.** When no authenticated request has arrived
+   from a device for 60 days (`INACTIVE_DELETE_DAYS`), the server deletes every row of it,
+   exactly as in rule 4, and the map is rebuilt without it. «Without uploads» means: the
+   device's `last_seen_at` (set on every authenticated request; `created_at` if there never
+   was one) is older than the cutoff. This covers the people who cannot or do not press
+   «Löschen»: who switched to the Offline-Version (no internet permission, so it cannot
+   delete), uninstalled the app, lost the phone, or switched sharing off and forgot. It
+   strengthens the rules above: nothing is kept about a person who has stopped
+   contributing, and no data outlives the contribution by more than 60 days. What remains is
+   +1 on the anonymous counter `devices_expired` (§6.4). The app then gets `401` and asks
+   for «Neue Kennung», which starts over with a fresh id.
 
 ## 3. Cell ids
 
@@ -183,7 +194,7 @@ minutes(device_id, start_utc INT, start_iso TEXT, … all fields of 4.3 …, rec
         PRIMARY KEY(device_id, start_utc))
 events(device_id, start_utc INT, start_iso TEXT, … all fields of 4.4 …, received_at,
        PRIMARY KEY(device_id, start_utc))
-counters(name TEXT PK, value INT)          -- schema v2; only 'devices_deleted' (§6.4)
+counters(name TEXT PK, value INT)          -- schema v2; 'devices_deleted', 'devices_expired' (§6.4)
 ```
 
 `token_hash` is SHA-256 of the token; the token itself is never stored. `hidden` lets the
@@ -192,8 +203,26 @@ still deletable by its owner). Indexes on `minutes(start_utc)`, `events(start_ut
 `sites(cell)`.
 
 Retention: raw minutes and events are kept for 2 years, then reduced to the hourly
-aggregates of section 6 (a nightly job). Backups: nightly SQLite `.backup` to encrypted
-object storage in Switzerland, 30 days.
+aggregates of section 6 (a nightly job).
+
+Expiry (§2.9), in the same daily job and in `python -m stadtlaerm_server retention`: every
+device whose `COALESCE(last_seen_at, created_at)` is more than `INACTIVE_DELETE_DAYS` (default
+60; 0 disables) days old is deleted with all its rows (minutes, events, hourly, sites,
+devices), one transaction per device, hidden devices included. The transaction re-reads the
+time under a write lock, so a device that uploads while the job runs is kept. Each deletion
+adds 1 to the counter `devices_expired`, kept apart from `devices_deleted` (deletions the
+device asked for). The job logs one line with the count, never an id. If any device expired,
+the map is republished at once. Because the 2-year retention only applies to devices that
+keep sending, it now matters only for long-running contributors.
+
+`last_seen_at` is updated by every authenticated request (site, minutes, events), including
+one that carries no records (an empty list). This is accepted: only the holder of the
+device's token can make such a request, so a device can only keep *its own* data alive, and
+the app never makes one — it calls the server only when the site changed or there are
+records to send (`android/…/upload/Uploader.kt`). A rate-limited request (429) is refused
+before `last_seen_at` is touched.
+
+Backups: nightly SQLite `.backup` to encrypted object storage in Switzerland, 30 days.
 
 ## 6. Published aggregates (what the website reads)
 
@@ -257,7 +286,7 @@ CORS headers), and printed by `python -m stadtlaerm_server stats`. Counts only:
   "generated_at": "2026-10-25T06:40:00+01:00",
   "devices_registered": 6, "devices_with_site": 4, "devices_ever_shared": 5,
   "devices_active_7d": 3, "devices_active_30d": 4, "devices_deleted_total": 0,
-  "cells_with_data_30d": 2, "nights_shared_total": 14,
+  "devices_expired_total": 0, "cells_with_data_30d": 2, "nights_shared_total": 14,
   "app_versions": { "0.5.0": 2, "andere": 1, "unbekannt": 1 },
   "registrations_by_week": [ { "week": "2026-W32", "devices": 1 }, "… 12 weeks, oldest first …" ]
 }
@@ -269,15 +298,17 @@ and site-less ones included); `devices_ever_shared` counts minutes already reduc
 rows by retention; `app_versions` is the version reported at registration (the server is not
 told about updates), per device active in the last 30 days, anything that does not look like a
 version number as `"andere"`; `registrations_by_week` counts only devices that still exist.
-`devices_deleted_total` is the only number kept for this purpose alone: one integer in
-`counters`, incremented in the same transaction as a device's deletion.
+`devices_deleted_total` and `devices_expired_total` are the only numbers kept for this
+purpose alone: one integer each in `counters`, incremented in the same transaction as a
+device's deletion — on the owner's request, or by the server after 60 days without uploads
+(§2.9).
 
 **Privacy.** The file adds no new data collection and no new kind of data: every figure is a
 count over the whole network, computed from the rows the map already uses, with no place
 (no cell, no breakdown by area), no device id, no time finer than an ISO week (and only for
 registrations), and no IP address — the server has none to give (no access log in Caddy or
 uvicorn; rate limits keep IPs in memory only). A deletion still removes every row of the
-device (§2.4); what remains is +1 on an anonymous counter, which cannot be traced back to a
+device (§2.4, §2.9); what remains is +1 on an anonymous counter, which cannot be traced back to a
 device. So §2 is not weakened. No breakdown finer than the fields above may be added without
 changing this section first. The app's Offline-Version has no internet permission and
 contributes nothing to this file; only devices that switched on «Messwerte teilen» in the

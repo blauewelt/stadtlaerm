@@ -171,7 +171,7 @@ class Uploader(
             store.update { if (requests > 0) it.copy(lastSuccessAtMs = clock(), lastError = null) else it.copy(lastError = null) }
             return Outcome.Done(sentMinutes, sentEvents, refused, more)
         } catch (e: UploadClient.Failure.Unauthorized) {
-            store.update { it.copy(authFailed = true, lastError = "Der Server kennt diese Kennung nicht (mehr). «Neue Kennung» wählen.") }
+            store.update { it.copy(authFailed = true, lastError = AUTH_FAILED_TEXT) }
             return Outcome.AuthFailed
         } catch (e: UploadClient.Failure.RateLimited) {
             store.update { it.copy(lastError = "Server ausgelastet, später erneut.") }
@@ -307,6 +307,16 @@ class Uploader(
     )
 
     companion object {
+        /**
+         * Shown while the server refuses the token (401). The usual reason: the server deletes a
+         * device's data after 60 days without uploads (server/DESIGN.md §2.9). No silent
+         * re-registration: the user chooses «Neue Kennung».
+         */
+        const val AUTH_FAILED_TEXT =
+            "Der Server kennt diese Kennung nicht mehr. Meist heisst das: 60 Tage lang sind von diesem Telefon " +
+                "keine Messwerte angekommen, darum hat der Server alle seine Daten gelöscht. " +
+                "«Neue Kennung» beginnt neu, unter einer neuen Kennung; gesendet wird dann, was du ab jetzt misst."
+
         /** The server refuses records older than 7 days (DESIGN.md §8, `MAX_RECORD_AGE_DAYS`). */
         const val MAX_AGE_MS = 7L * 24 * 3600 * 1000
         /** Records this close to the limit are left out: they could be refused by the time they arrive. */

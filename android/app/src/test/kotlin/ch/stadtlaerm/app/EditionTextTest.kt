@@ -74,6 +74,8 @@ class EditionTextTest {
         }
         assertTrue(EditionInfo.switchHint(EditionInfo.OFFLINE)!!.contains("Karten-Version"))
         assertTrue(EditionInfo.switchHint(EditionInfo.KARTE)!!.contains("Offline-Version"))
+        // The server deletes a device's data after 60 days without uploads (server/DESIGN.md §2.9).
+        assertTrue(EditionInfo.switchHint(EditionInfo.KARTE)!!.contains("60 Tage"))
         assertNull(EditionInfo.switchHint(EditionInfo.LABOR))
         // Swiss spelling, «du» like the rest of the app.
         val all = listOf(EditionInfo.OFFLINE, EditionInfo.KARTE, EditionInfo.LABOR)

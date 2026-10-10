@@ -2,8 +2,10 @@
 
 Only counts over the whole network: no device ids, no per-device rows, no cells, no places,
 no IP addresses (the server stores none). Computed from the data the server already keeps
-for the map; nothing new is collected for it — except the single integer `devices_deleted`
-in the `counters` table, incremented when a device deletes itself (db.delete_device).
+for the map; nothing new is collected for it — except two integers in the `counters` table:
+`devices_deleted`, incremented when a device deletes itself (db.delete_device), and
+`devices_expired`, incremented when the server deletes a device after INACTIVE_DELETE_DAYS
+without uploads (retention.expire_inactive).
 
 Definitions (all "now" = the publish time):
 
@@ -17,6 +19,9 @@ Definitions (all "now" = the publish time):
   included), so it can be larger than the map's figure.
 - `devices_deleted_total`: how many devices have deleted their data on the server since the
   counter exists (one integer, no ids, no dates).
+- `devices_expired_total`: how many devices the server deleted completely because they sent
+  nothing for INACTIVE_DELETE_DAYS (60) days (one integer, no ids, no dates). Kept apart from
+  `devices_deleted_total`, which counts deletions the device asked for.
 - `cells_with_data_30d`: hectares shown on the current map (cells.json), i.e. with data in the
   30 nights up to the last complete night, after MIN_DEVICES_PER_CELL.
 - `nights_shared_total`: device-nights (22–06 local) with at least one valid minute, including
@@ -112,7 +117,7 @@ def compute(conn: sqlite3.Connection, now: datetime, cells_with_data_30d: int) -
         if d is not None and first_monday <= d <= today:
             per_week[_iso_week(d)] += 1
 
-    deleted = conn.execute("SELECT value FROM counters WHERE name = 'devices_deleted'").fetchone()
+    counters = {name: int(value) for name, value in conn.execute("SELECT name, value FROM counters")}
 
     return {
         "generated_at": now.astimezone(agg.ZONE).isoformat(timespec="seconds"),
@@ -125,7 +130,8 @@ def compute(conn: sqlite3.Connection, now: datetime, cells_with_data_30d: int) -
         ),
         "devices_active_7d": len(_active_ids(conn, since_7, now_ms)),
         "devices_active_30d": len(active_30),
-        "devices_deleted_total": int(deleted[0]) if deleted else 0,
+        "devices_deleted_total": counters.get("devices_deleted", 0),
+        "devices_expired_total": counters.get("devices_expired", 0),
         "cells_with_data_30d": cells_with_data_30d,
         "nights_shared_total": len(nights),
         "app_versions": dict(sorted(versions.items())),

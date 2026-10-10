@@ -27,6 +27,14 @@ never shipped under that number. The server runs at api.stadtlaerm.ch; the websi
   stadtlaerm_server stats`): project-wide counts only (registered/active/sharing devices,
   deletions, hectares, shared nights, app versions, registrations per week; server/DESIGN.md §6.4).
   Schema v2 adds a single deletion counter. `scripts/usage_report.py` combines both sources.
+- **Server deletes silent devices after 60 days:** a device with no upload (no authenticated
+  request) for 60 days is deleted completely, like «Löschen» (`INACTIVE_DELETE_DAYS`, daily job and
+  `python -m stadtlaerm_server retention`; anonymous counter `devices_expired_total` in
+  `stats.json`; server/DESIGN.md §2.9). This covers phones that switched to the Offline-Version,
+  uninstalled the app or stopped sharing without deleting. In the app, a refused token (401) now
+  explains the likely reason («… 60 Tage lang sind von diesem Telefon keine Messwerte angekommen …»)
+  and still waits for «Neue Kennung» (no silent re-registration); the sharing explanation
+  («Löschen») and the Karten-Version's switch hint mention the 60-day rule.
 
 ### Added by the merge
 

@@ -61,7 +61,9 @@ fun placementLabel(p: String): String = when (p) {
 
 /** One line for the settings overview. */
 fun shareSummary(s: UploadSnapshot): String = when {
-    s.enabled && s.authFailed -> "Ein – Kennung vom Server abgelehnt, «Neue Kennung» wählen"
+    s.enabled && s.authFailed ->
+        "Ein – der Server kennt diese Kennung nicht mehr, wohl weil 60 Tage lang nichts ankam (dann löscht er alle Daten). " +
+            "«Neue Kennung» wählen, um neu zu beginnen."
     s.enabled -> "Ein" + (s.site?.let { " · Hektare ${it.cell}" } ?: "") +
         (s.lastSuccessAtMs?.let { " · zuletzt gesendet ${Fmt.dateTime(it)}" } ?: "")
     else -> "Aus – es wird nichts gesendet"
@@ -135,6 +137,7 @@ fun ShareScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             Bullets(
                 "Ausschalten stoppt das Senden sofort.",
                 "«Meine Daten auf dem Server löschen» (unten) entfernt alles von diesem Telefon sofort vom Server; die Karte wird beim nächsten Durchlauf (alle 10 Minuten) ohne deine Werte neu berechnet.",
+                "Kommen 60 Tage lang keine Messwerte an – etwa weil du das Teilen ausgeschaltet, zur Offline-Version gewechselt oder die App deinstalliert hast –, löscht der Server alle Daten dieses Telefons von selbst.",
                 "Deine Daten auf dem Telefon bleiben in jedem Fall, bis du sie unter «Daten» löschst.",
             )
             if (!s.explanationSeen) {
@@ -187,7 +190,10 @@ fun ShareScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                s.lastError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                // While the token is refused, always the current explanation (an older stored text may differ).
+                (if (s.authFailed) Uploader.AUTH_FAILED_TEXT else s.lastError)?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
             }
 
             // 4. Server data.
@@ -233,7 +239,7 @@ fun ShareScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                     if (newIdentity) "Gelöscht. Ab dem nächsten Senden wird eine neue Kennung verwendet."
                     else "Gelöscht: Der Server hat bestätigt, dass alle Daten dieses Telefons entfernt sind. Das Teilen ist ausgeschaltet."
                 Uploader.DeleteOutcome.UnknownToServer ->
-                    "Der Server kennt diese Kennung nicht (mehr); dort liegt nichts mehr, das zu ihr gehört. Die Kennung wurde auf dem Telefon vergessen."
+                    "Der Server kennt diese Kennung nicht (mehr), zum Beispiel weil er nach 60 Tagen ohne Messwerte alles gelöscht hat; dort liegt nichts mehr, das zu ihr gehört. Die Kennung wurde auf dem Telefon vergessen."
                 is Uploader.DeleteOutcome.Failed -> "Nicht gelöscht (${r.message}). Bitte mit Internetverbindung erneut versuchen."
             }
         }

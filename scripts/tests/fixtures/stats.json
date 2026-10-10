@@ -6,6 +6,7 @@
   "devices_active_7d": 3,
   "devices_active_30d": 4,
   "devices_deleted_total": 0,
+  "devices_expired_total": 0,
   "cells_with_data_30d": 2,
   "nights_shared_total": 14,
   "app_versions": {

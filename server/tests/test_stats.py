@@ -17,8 +17,8 @@ from stadtlaerm_server.schemas import MinuteIn
 
 KEYS = {
     "generated_at", "devices_registered", "devices_with_site", "devices_ever_shared",
-    "devices_active_7d", "devices_active_30d", "devices_deleted_total", "cells_with_data_30d",
-    "nights_shared_total", "app_versions", "registrations_by_week",
+    "devices_active_7d", "devices_active_30d", "devices_deleted_total", "devices_expired_total",
+    "cells_with_data_30d", "nights_shared_total", "app_versions", "registrations_by_week",
 }  # fmt: skip
 
 
@@ -72,6 +72,7 @@ EXPECTED = {
     "devices_active_7d": 3,  # a, b, hidden (hidden counts here, not on the map)
     "devices_active_30d": 4,  # + nosite (20 nights ago)
     "devices_deleted_total": 0,
+    "devices_expired_total": 0,
     "cells_with_data_30d": 2,  # a's and b's hectares; hidden not shown, old too old
     "nights_shared_total": 14,  # a 10, b 1, hidden 1, nosite 1, old 1
     "app_versions": {"0.5.0": 2, "andere": 1, "unbekannt": 1},

@@ -305,6 +305,7 @@ class UploadTest {
         assertEquals(Uploader.Outcome.AuthFailed, up.run())
         assertTrue(store.state.value.authFailed)
         assertTrue(store.state.value.lastError!!.contains("Neue Kennung"))
+        assertTrue(store.state.value.lastError!!.contains("60 Tage"), "explains the likely reason: expiry on the server")
         val before = server.requests.size
         assertEquals(Uploader.Outcome.AuthFailed, up.run())
         assertEquals(before, server.requests.size, "no requests while the token is refused")

@@ -58,9 +58,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with db.open_db(settings.db_path) as conn:
             publish.publish(conn, settings.map_dir, min_devices=settings.min_devices_per_cell)
 
-    def retention_once() -> None:
+    def retention_once() -> int:
+        """Retention and expiry (DESIGN.md §5); returns the number of expired devices."""
         with db.open_db(settings.db_path) as conn:
             log.info("retention: %s", retention.run_retention(conn, retention_days=settings.retention_days))
+            return retention.expire_inactive(conn, inactive_days=settings.inactive_delete_days)
 
     async def background() -> None:
         last_retention: datetime | None = None
@@ -69,7 +71,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await asyncio.to_thread(publish_once)
                 now = datetime.now(UTC)
                 if last_retention is None or now - last_retention >= timedelta(days=1):
-                    await asyncio.to_thread(retention_once)
+                    if await asyncio.to_thread(retention_once):
+                        # Expired devices leave the map now, not only at the next regular run.
+                        await asyncio.to_thread(publish_once)
                     last_retention = now
                 registrations.prune()
                 device_requests.prune()
@@ -89,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Stadtlärm contribution API", version="1", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.settings = settings
     app.state.publish_once = publish_once
+    app.state.retention_once = retention_once
     app.state.registrations = registrations
     app.state.device_requests = device_requests
 

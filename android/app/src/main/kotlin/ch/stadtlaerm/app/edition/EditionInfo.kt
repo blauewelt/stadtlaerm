@@ -41,8 +41,8 @@ object EditionInfo {
             "Wer Messwerte für die Lärmkarte teilen möchte, installiert die Karten-Version von stadtlaerm.ch über diese App. Die Messungen bleiben erhalten."
         KARTE ->
             "Zur Offline-Version wechselst du, indem du sie von stadtlaerm.ch über diese App installierst. Die Messungen bleiben erhalten, " +
-                "«Messwerte teilen» wird ausgeschaltet. Willst du deine Daten auf dem Server löschen, tu das vorher unter «Messwerte teilen»: " +
-                "In der Offline-Version geht das nicht."
+                "«Messwerte teilen» wird ausgeschaltet. Willst du deine Daten auf dem Server sofort löschen, tu das vorher unter «Messwerte teilen»: " +
+                "In der Offline-Version geht das nicht. Sonst löscht der Server sie von selbst, wenn 60 Tage lang keine Messwerte mehr ankommen."
         else -> null
     }
 }

@@ -6,8 +6,8 @@ night figures that the map page reads as static JSON. [DESIGN.md](DESIGN.md) is 
 this file is about running it.
 
 One process (Python 3.12, FastAPI, SQLite) does everything: the upload API, the static map
-files under `/v1/map/`, and a background loop that republishes the map and runs the nightly
-retention job. Caddy in front of it handles TLS.
+files under `/v1/map/`, and a background loop that republishes the map and runs the daily
+retention job (which also deletes devices that sent nothing for 60 days). Caddy in front of it handles TLS.
 
 ## Layout
 
@@ -19,7 +19,7 @@ retention job. Caddy in front of it handles TLS.
 | `stadtlaerm_server/aggregate.py` | Night and hour arithmetic, pure functions (§6.1 rules) |
 | `stadtlaerm_server/publish.py` | Builds and atomically writes `cells.json`, `cells/{cell}.json`, `nights/{date}.json`, `stats.json` |
 | `stadtlaerm_server/stats.py` | The project-wide usage counts of `stats.json` (DESIGN.md §6.4) |
-| `stadtlaerm_server/retention.py` | Reduces raw rows older than 2 years to hourly aggregates |
+| `stadtlaerm_server/retention.py` | Reduces raw rows older than 2 years to hourly aggregates; deletes devices without uploads for 60 days (§2.9) |
 | `stadtlaerm_server/synthetic.py` | Invented test data (a port of the app's chart test fixtures) |
 | `scripts/make_fixture.py` | Generates `example_cells.json` / `example_cell.json` through the real publisher |
 | `scripts/backup.sh` | Nightly encrypted SQLite backup |
@@ -45,7 +45,10 @@ curl -s -X POST localhost:8000/v1/devices -H 'Content-Type: application/json' \
 ```
 
 Other commands: `python -m stadtlaerm_server publish` rebuilds the map files once,
-`python -m stadtlaerm_server retention` runs the retention job once,
+`python -m stadtlaerm_server retention` runs the retention job once (2-year reduction, then
+deletion of devices without uploads for `INACTIVE_DELETE_DAYS`; republishes the map if any
+device was deleted; prints `{"hours": …, "minutes_deleted": …, "events_deleted": …,
+"devices_expired": …}`),
 `python -m stadtlaerm_server stats` prints the usage counts of `stats.json` (computed now,
 nothing written).
 
@@ -63,8 +66,11 @@ cd server
 The tests cover the API round trip (register, site, minutes and events as plain and gzip JSON,
 duplicates, delete, auth and validation failures, rate limits, body limits, map headers),
 the night arithmetic on synthetic nights (the app's Friday fixture, a 9-hour DST night, a
-7-hour one, low-coverage minutes, two- and three-device cells), publishing, retention, and
-the usage counts of `stats.json` (every field, after a delete and after retention).
+7-hour one, low-coverage minutes, two- and three-device cells), publishing, retention, the
+deletion of devices without uploads for 60 days (`tests/test_expiry.py`: 61 days deleted with
+every row, 59 kept, `created_at` when never seen, 0 disables, hidden devices, separate counter,
+map after publish, log line, CLI), and the usage counts of `stats.json` (every field, after a
+delete and after retention).
 
 ## The API in one screen
 
@@ -171,6 +177,7 @@ Keep a misbehaving device out of the map without deleting its data:
 | `PUBLISH_INTERVAL_S` | `600` | How often (seconds) the map files are rebuilt. They are also rebuilt at startup. |
 | `BACKGROUND_JOBS` | `1` | `1` runs the publish loop and the daily retention job inside the server process; `0` turns them off (tests, or if you run `publish`/`retention` from cron instead). |
 | `RETENTION_DAYS` | `730` | Raw minutes and events older than this are reduced to hourly figures and deleted (2 years per DESIGN §5). |
+| `INACTIVE_DELETE_DAYS` | `60` | A device with no authenticated request (upload, site) for this many days is deleted with all its data in the daily job, like a deletion by its owner (DESIGN §2.9, §5); counted in `devices_expired_total`. `0` disables it. |
 | `CORS_ORIGIN` | `https://stadtlaerm.ch` | The website origin allowed to read the map files from the browser (`Access-Control-Allow-Origin`). Use `http://localhost:8080` or similar for local website work. |
 | `TRUST_PROXY` | `0` (compose: `1`) | `1` takes the client IP for the registration limit from the `X-Forwarded-For` header set by Caddy. Only turn on behind a proxy you control, otherwise clients could fake their IP. |
 | `REGISTRATIONS_PER_IP_PER_DAY` | `10` | How many new device ids one IP address may create per day. |
@@ -219,7 +226,9 @@ These are choices the design left open; the website builds against them (see the
   `devices_ever_shared` (≥ 1 minute record ever, also after retention), `devices_active_7d` /
   `devices_active_30d` (a valid minute in the window, every device — so it can exceed
   `network.devices_active_7d`, which counts only devices on the map), `devices_deleted_total`
-  (a single counter, table `counters`, schema v2), `cells_with_data_30d` (= the number of cells
+  (a single counter, table `counters`, schema v2), `devices_expired_total` (devices the server
+deleted after `INACTIVE_DELETE_DAYS` without uploads; a second counter, kept apart),
+`cells_with_data_30d` (= the number of cells
   in `cells.json`), `nights_shared_total` (device-nights with a valid minute, hourly rows
   included), `app_versions` (devices active in 30 days per registration-time version;
   non-version strings → `"andere"`), `registrations_by_week` (12 ISO weeks, Europe/Zurich,

@@ -19,6 +19,7 @@ class Settings:
     publish_interval_s: float = 600.0
     background_jobs: bool = True
     retention_days: int = 730
+    inactive_delete_days: int = 60
     cors_origin: str = "https://stadtlaerm.ch"
     trust_proxy: bool = False
     registrations_per_ip_per_day: int = 10
@@ -43,6 +44,7 @@ class Settings:
             publish_interval_s=float(e.get("PUBLISH_INTERVAL_S", d.publish_interval_s)),
             background_jobs=_bool(e.get("BACKGROUND_JOBS", "1")),
             retention_days=int(e.get("RETENTION_DAYS", d.retention_days)),
+            inactive_delete_days=int(e.get("INACTIVE_DELETE_DAYS", d.inactive_delete_days)),
             cors_origin=e.get("CORS_ORIGIN", d.cors_origin),
             trust_proxy=_bool(e.get("TRUST_PROXY", "0")),
             registrations_per_ip_per_day=int(e.get("REGISTRATIONS_PER_IP_PER_DAY", d.registrations_per_ip_per_day)),

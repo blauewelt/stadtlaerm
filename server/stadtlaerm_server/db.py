@@ -94,8 +94,9 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (device_id, hour_utc)
     ) WITHOUT ROWID;
     """,
-    # 2: named integer counters for stats.json (DESIGN.md §6.4). Only `devices_deleted` so far:
-    # how many devices deleted themselves — one number, no ids, no dates.
+    # 2: named integer counters for stats.json (DESIGN.md §6.4): `devices_deleted` (devices that
+    # deleted themselves) and `devices_expired` (deleted after INACTIVE_DELETE_DAYS without uploads,
+    # retention.expire_inactive) — one number each, no ids, no dates. No schema change needed.
     """
     CREATE TABLE counters (
         name TEXT PRIMARY KEY,
@@ -194,19 +195,28 @@ def upsert_rows(conn: sqlite3.Connection, table: str, columns: Sequence[str], ro
     return accepted, duplicates
 
 
+def delete_device_rows(conn: sqlite3.Connection, device_id: str) -> bool:
+    """Deletes every row of the device; the caller holds the transaction. True if a device row existed."""
+    for table in ("minutes", "events", "hourly", "sites"):
+        conn.execute(f"DELETE FROM {table} WHERE device_id = ?", (device_id,))
+    return conn.execute("DELETE FROM devices WHERE id = ?", (device_id,)).rowcount > 0
+
+
+def bump_counter(conn: sqlite3.Connection, name: str) -> None:
+    conn.execute(
+        "INSERT INTO counters (name, value) VALUES (?, 1) ON CONFLICT (name) DO UPDATE SET value = value + 1",
+        (name,),
+    )
+
+
 def delete_device(conn: sqlite3.Connection, device_id: str) -> None:
     """Every row of the device, in one transaction (DESIGN.md §2.4, §4.5).
 
     The only thing left behind is +1 on the anonymous counter `devices_deleted` (stats.json).
     """
     with conn:
-        for table in ("minutes", "events", "hourly", "sites"):
-            conn.execute(f"DELETE FROM {table} WHERE device_id = ?", (device_id,))
-        if conn.execute("DELETE FROM devices WHERE id = ?", (device_id,)).rowcount:
-            conn.execute(
-                "INSERT INTO counters (name, value) VALUES ('devices_deleted', 1) "
-                "ON CONFLICT (name) DO UPDATE SET value = value + 1"
-            )
+        if delete_device_rows(conn, device_id):
+            bump_counter(conn, "devices_deleted")
 
 
 # ---- reads for aggregation ---------------------------------------------------------------

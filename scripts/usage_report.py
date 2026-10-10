@@ -54,6 +54,7 @@ def render(downloads: dict, stats: dict) -> str:
         f"  … ever sent measurements    {stats.get('devices_ever_shared', 0):>7}",
         f"  active, last 7 / 30 days    {stats.get('devices_active_7d', 0):>3} / {stats.get('devices_active_30d', 0)}",
         f"  deleted their data          {stats.get('devices_deleted_total', 0):>7}",
+        f"  deleted after 60 d inactive {stats.get('devices_expired_total', 0):>7}",
         f"  hectares on the map (30 n.) {stats.get('cells_with_data_30d', 0):>7}",
         f"  device-nights shared        {stats.get('nights_shared_total', 0):>7}",
         f"  app versions (active 30 d)  {versions}",

@@ -32,7 +32,8 @@ in [server/DESIGN.md](server/DESIGN.md) §2 and §4: off until switched on, minu
 numbers plus a 100 m hectare (never coordinates, never the raw classifier labels), to one host
 (`api.stadtlaerm.ch`, in Switzerland), through one network class
 (`android/app/src/main/kotlin/ch/stadtlaerm/app/upload/UploadClient.kt`), with no third-party SDK;
-deletable on the server from the app at any time.
+deletable on the server from the app at any time, and deleted by the server automatically after
+60 days without uploads.
 [PRIVACY.md](PRIVACY.md) explains how the code keeps these promises and how to check them.
 
 ## Usage numbers
@@ -45,8 +46,9 @@ What the project counts, and who counts it — totals over the whole project, al
   project never sees who downloaded; downloads of the fallback copy on stadtlaerm.ch are not counted.
 - **Sharing:** the server publishes [`stats.json`](https://api.stadtlaerm.ch/v1/map/stats.json)
   with the map files ([server/DESIGN.md](server/DESIGN.md) §6.4): devices registered, with a
-  hectare, ever shared, active in 7/30 days, deleted; hectares on the map; shared device-nights;
-  app versions of active devices; registrations per ISO week. Computed from the data the map already
+  hectare, ever shared, active in 7/30 days, deleted, deleted by the server after 60 days without
+  uploads; hectares on the map; shared device-nights; app versions of active devices; registrations
+  per ISO week. Computed from the data the map already
   uses; no ids, no places, no IP addresses.
 - `python3 scripts/usage_report.py` prints both in one short report.
 - **Not counted:** anything about the Offline-Version beyond its downloads (it has no internet

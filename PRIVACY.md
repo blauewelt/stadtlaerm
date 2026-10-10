@@ -32,7 +32,9 @@ settings card does not exist, and without `INTERNET` Android would refuse the so
 the Offline-Version is installed over a Karten-Version that had sharing on, it switches sharing
 off and cancels the scheduled upload jobs at its first start (`UploadModule.stopForOfflineEdition`);
 it keeps the device id and token so that the Karten-Version can still delete the data on the
-server later. Delete your server data in the Karten-Version *before* switching if you want it gone.
+server later. Delete your server data in the Karten-Version *before* switching if you want it gone
+at once; otherwise the server deletes it by itself 60 days after the last upload (see «Silent
+devices are deleted» below).
 
 ## Guarantees (app, since v0.1)
 
@@ -116,6 +118,7 @@ the code keeps them:
 | **When** | After every full hour and shortly after a measurement stops (WorkManager), only over Wi-Fi/unmetered networks unless «nur über WLAN» is switched off. At the first opt-in the last 7 days are included (the screen says so); afterwards nothing measured while sharing was off is ever sent. |
 | **Identity** | At the first upload the server issues a random device id and a secret token (DESIGN.md §4.1). The token is stored encrypted with a key held in the Android Keystore; the id is never shown on the public map. «Neue Kennung» deletes the server data and starts a fresh id. |
 | **Delete means delete** | «Meine Daten auf dem Server löschen» sends `DELETE /v1/devices/{id}` and waits for the server's `204` (sent only after every row is gone, DESIGN.md §2.4); only then are id and token forgotten on the phone and sharing switched off. On an error nothing changes and the screen says so. |
+| **Silent devices are deleted** | If the server receives nothing from a device for **60 days** (no upload, no other authenticated request), it deletes every row of that device exactly as «Löschen» does, and the map is rebuilt without it (DESIGN.md §2.9, §5; `retention.expire_inactive`, setting `INACTIVE_DELETE_DAYS`). This covers phones that switched to the Offline-Version, uninstalled the app, or stopped sharing without deleting. Only an anonymous counter (`devices_expired`) goes up by one. If such a phone shares again, the server answers `401`; the app says why and offers «Neue Kennung», which starts over under a fresh id (it does not re-register silently). |
 
 `ACCESS_NETWORK_STATE` is required by Android for background jobs that wait for a network (and
 for «nur über WLAN»); it tells the app whether a connection is up and metered, not which network.
@@ -244,11 +247,11 @@ counts in exactly two places, both public, both totals over the whole project:
 2. **Sharing**, from the server's own data: `https://api.stadtlaerm.ch/v1/map/stats.json`
    ([server/DESIGN.md](server/DESIGN.md) §6.4), rebuilt with the map — how many devices are
    registered, have set a hectare, ever shared, were active in the last 7/30 days, deleted their
-   data (one counter), how many hectares are on the map, how many device-nights were shared, how
+   data (one counter), were deleted by the server after 60 days without uploads (one counter), how many hectares are on the map, how many device-nights were shared, how
    many active devices reported which app version at registration, and registrations per ISO week.
    Counts only: no device ids, no cells or places, no IP addresses (the server stores none, and
    neither Caddy nor the app server keeps an access log). Nothing new is collected for it; the only
-   number kept just for it is the deletion counter, a single integer.
+   numbers kept just for it are the two deletion counters, one integer each.
 
 **Not counted:** anything about the Offline-Version beyond its downloads — it has no internet
 permission and cannot report anything, by design; the Karten-Version with sharing switched off;
