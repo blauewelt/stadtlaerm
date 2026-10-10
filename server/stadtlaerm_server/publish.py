@@ -5,6 +5,7 @@ Layout in MAP_DIR (served under /v1/map/):
     cells.json              the last complete night, every shown cell (§6.1)
     cells/{cell}.json       one cell: 90 nights of `last_night` blocks + hours of the last night (§6.2)
     nights/{date}.json      cells.json for each of the last 90 nights (§6.3)
+    stats.json              project-wide usage counts, no places, no ids (§6.4, stats.py)
 
 Only devices with a site that are not `hidden` contribute. A device's data belongs to the
 cell of its *current* site. Files of cells or nights that are no longer shown are removed,
@@ -24,7 +25,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from . import aggregate as agg
-from . import db
+from . import db, stats
 
 HISTORY_NIGHTS = 90
 WINDOW_LONG = 30
@@ -193,14 +194,28 @@ def write(map_dir: Path, cells_json: dict, cell_files: dict[str, dict], nights_f
                 p.unlink(missing_ok=True)
 
 
-def publish(conn: sqlite3.Connection, map_dir: Path, now: datetime | None = None, min_devices: int = 1) -> dict:
-    """Reads the database, writes every map file; returns cells.json."""
-    now = now or datetime.now(UTC)
+def build_from_db(
+    conn: sqlite3.Connection, now: datetime, min_devices: int = 1
+) -> tuple[dict, dict[str, dict], dict[str, dict]]:
+    """[build] on the devices in the database, over the nights the published files need."""
     last_night = agg.last_complete_night(now)
     first_night = last_night - timedelta(days=HISTORY_NIGHTS + WINDOW_LONG)
     start_ms = agg.night_bounds(first_night)[0]
     end_ms = max(agg.night_bounds(last_night)[1], int(now.timestamp() * 1000) + 1)
-    devices = load_devices(conn, start_ms, end_ms)
-    cells_json, cell_files, nights_files = build(devices, now, min_devices)
+    return build(load_devices(conn, start_ms, end_ms), now, min_devices)
+
+
+def current_stats(conn: sqlite3.Connection, now: datetime | None = None, min_devices: int = 1) -> dict:
+    """stats.json as a publish run at `now` would write it, without writing anything."""
+    now = now or datetime.now(UTC)
+    cells_json, _, _ = build_from_db(conn, now, min_devices)
+    return stats.compute(conn, now, len(cells_json["cells"]))
+
+
+def publish(conn: sqlite3.Connection, map_dir: Path, now: datetime | None = None, min_devices: int = 1) -> dict:
+    """Reads the database, writes every map file and stats.json; returns cells.json."""
+    now = now or datetime.now(UTC)
+    cells_json, cell_files, nights_files = build_from_db(conn, now, min_devices)
     write(map_dir, cells_json, cell_files, nights_files)
+    write_json_atomic(map_dir / "stats.json", stats.compute(conn, now, len(cells_json["cells"])))
     return cells_json

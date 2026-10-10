@@ -5,7 +5,28 @@
 0.5.0 = 0.4.0 (detector v2, below) + the opt-in «Messwerte teilen» for the shared noise map. The
 sharing feature was developed on the `map-design` branch as an unpublished "0.4.0" (code 10); it
 never shipped under that number. The server runs at api.stadtlaerm.ch; the website still offers
-0.4.0. No signed 0.5.0 APK exists yet.
+0.4.0.
+
+### Two published editions
+
+- **Offline-Version** (flavour `offline`, `stadtlaerm.apk`, the default download): the public app
+  **without** `INTERNET` and `ACCESS_NETWORK_STATE` and without «Messwerte teilen»
+  (`UPLOAD_AVAILABLE = false`). Data leaves the phone only through the existing exports. 0.4.0
+  users get it as their normal update, with no new permission.
+- **Karten-Version** (flavour `public`, `stadtlaerm-karte.apk`): the public app as described below,
+  with the opt-in «Messwerte teilen».
+- Both have app id `ch.stadtlaerm.app`, version 0.5.0 / code 11 and the same key: installing one over
+  the other switches the edition and keeps the data. `BuildConfig.EDITION` (`offline` | `karte` |
+  `labor`) is shown in Einstellungen → App-Version with a sentence on how to switch, and «Nach Update
+  suchen» adds `&e=<edition>` so update.html offers the same edition. The Offline-Version, started
+  after a Karten-Version with sharing on, switches sharing off and cancels the upload jobs.
+- **Downloads via GitHub Releases:** both APKs are attached to the release `v0.5.0` under fixed
+  names; the website links there (GitHub counts downloads per file, `scripts/download_stats.py`).
+  `docs/download/stadtlaerm.apk` remains as a fallback for old links (Offline-Version).
+- **Server:** `stats.json` next to the map files (`/v1/map/stats.json`, `python -m
+  stadtlaerm_server stats`): project-wide counts only (registered/active/sharing devices,
+  deletions, hectares, shared nights, app versions, registrations per week; server/DESIGN.md §6.4).
+  Schema v2 adds a single deletion counter. `scripts/usage_report.py` combines both sources.
 
 ### Added by the merge
 
@@ -21,7 +42,7 @@ never shipped under that number. The server runs at api.stadtlaerm.ch; the websi
   files on the phone when switched on and never sends anything (no internet permission). The
   public text is unchanged.
 
-### Public app (`ch.stadtlaerm.app`, version 0.5.0, code 11; not yet published)
+### Public app, Karten-Version (`ch.stadtlaerm.app`, version 0.5.0, code 11; not yet published)
 
 In short: an opt-in «Messwerte teilen» sends the measured levels to the shared noise map — off by
 default; the `INTERNET` permission is added for exactly this. The location is placed on the phone
@@ -37,7 +58,8 @@ to a 100 m × 100 m hectare square; «Meine Daten auf dem Server löschen» dele
   löschen» and «Neue Kennung». Uploads run 5 min after every full hour and 15 s after a measurement
   stops (WorkManager), in batches of ≤ 1440 minutes / ≤ 2000 events, resume from the last
   acknowledged start, and never resend records the server refused.
-- **Permissions:** the public app now has `INTERNET` and `ACCESS_NETWORK_STATE`, used only by
+- **Permissions:** the Karten-Version now has `INTERNET` and `ACCESS_NETWORK_STATE` (the
+  Offline-Version has neither), used only by
   `upload/UploadClient.kt` for one host. `ACCESS_WIFI_STATE` and `RECEIVE_BOOT_COMPLETED` stay
   removed; no location permission. PRIVACY.md, the READMEs and the website say so.
 - New dependency: `androidx.work:work-runtime-ktx` 2.9.1 (AndroidX, scheduling only). The network

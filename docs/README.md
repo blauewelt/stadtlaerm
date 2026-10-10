@@ -7,13 +7,13 @@ spelling, system fonts, no third-party requests — except on the map page, whic
 |---|---|
 | `index.html`, `style.css` | Home page and the shared stylesheet (light/dark via CSS variables) |
 | `datenschutz.html` | Privacy page (mirrors [../PRIVACY.md](../PRIVACY.md)) |
-| `update.html` | Update check opened by the app (one inline script, pinned by hash in its CSP) |
+| `update.html` | Update check opened by the app (`#v=…&c=…&e=offline` or `karte`; one inline script, pinned by hash in its CSP) |
 | `karte.html` | The noise map ([../server/DESIGN.md](../server/DESIGN.md) §7) |
 | `map/lv95.js` | WGS84 ↔ Swiss LV95 and hectare cell ids (§3), pure functions |
 | `map/model.js` | Pure helpers of the map: wording, colour scales, the card's night-chart model |
 | `map/karte.js`, `map/karte.css` | The map page itself (Leaflet, legend, card, date control) |
 | `vendor/leaflet/` | Leaflet 1.9.4, copied unchanged from the npm package (`node_modules/leaflet/dist`) |
-| `img/`, `download/` | Screenshots; the signed APK |
+| `img/`, `download/` | Screenshots; `download/stadtlaerm.apk`, the signed Offline-Version as a fallback for old links (the download buttons link the GitHub Release assets `stadtlaerm.apk` and `stadtlaerm-karte.apk`) |
 
 ## The map page
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-6uKJUZaO5JBshuwm2HUhXSxjcYys4RS5ARNaJPTjvuo='; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-P9T/fPJoPDL2cqMMM4vs7It3FIGWLwr4mApmcV6fhdY='; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex">
@@ -19,18 +19,22 @@
   <h1>Update prüfen</h1>
 </header>
 
-<!-- Release checklist: data-version / data-code must match the published APK (versionName / versionCode). -->
-<main class="wrap" id="update" data-version="0.5.0" data-code="11">
+<!-- Release checklist: data-version / data-code must match the published APKs (versionName / versionCode,
+     the same for both editions); the release tag in data-offline / data-karte and in the two links below. -->
+<main class="wrap" id="update" data-version="0.5.0" data-code="11"
+      data-offline="https://github.com/blauewelt/stadtlaerm/releases/download/v0.5.0/stadtlaerm.apk"
+      data-karte="https://github.com/blauewelt/stadtlaerm/releases/download/v0.5.0/stadtlaerm-karte.apk">
 
 <section>
   <h2 id="status">Aktuelle Version: 0.5.0</h2>
-  <p id="download"><a class="button" href="download/stadtlaerm.apk" download type="application/vnd.android.package-archive">App herunterladen</a></p>
+  <p id="download"><a class="button" id="download-link" href="https://github.com/blauewelt/stadtlaerm/releases/download/v0.5.0/stadtlaerm.apk" type="application/vnd.android.package-archive">Offline-Version herunterladen</a></p>
   <ol class="steps" id="hints" hidden>
     <li>Die heruntergeladene Datei in der App «Dateien» öffnen (Ordner «Downloads»). Der Download-Dialog des Browsers verweigert das Öffnen oft.</li>
     <li>Die neue Version wird über die alte installiert. Die Messwerte bleiben erhalten.</li>
   </ol>
-  <p class="small">Die installierte Version wird nur im Browser verglichen; der Teil nach dem # wird nicht an den Server gesendet.</p>
-  <p class="small">Mehr zur Installation und die Prüfsumme der Datei stehen auf der <a href="./#installation">Startseite</a>.</p>
+  <p id="other"><span id="other-text">Wer Messwerte für die Lärmkarte teilen möchte:</span> <a id="other-link" href="https://github.com/blauewelt/stadtlaerm/releases/download/v0.5.0/stadtlaerm-karte.apk" type="application/vnd.android.package-archive">Karten-Version herunterladen</a>. Sie wird über die installierte Version installiert, die Messungen bleiben erhalten. <a href="./#version">Welche Version?</a></p>
+  <p class="small">Die installierte Version wird nur im Browser verglichen; der Teil nach dem # wird nicht an den Server gesendet. Die App-Dateien liefert GitHub aus.</p>
+  <p class="small">Mehr zur Installation und die Prüfsummen der Dateien stehen auf der <a href="./#installation">Startseite</a>.</p>
 </section>
 
 </main>
@@ -52,7 +56,14 @@
   var latestCode = parseInt(main.getAttribute("data-code"), 10);
   var status = document.getElementById("status");
   var download = document.getElementById("download");
+  var downloadLink = document.getElementById("download-link");
   var hints = document.getElementById("hints");
+  var otherText = document.getElementById("other-text");
+  var otherLink = document.getElementById("other-link");
+  var EDITIONS = {
+    offline: { label: "Offline-Version", url: main.getAttribute("data-offline") },
+    karte: { label: "Karten-Version", url: main.getAttribute("data-karte") }
+  };
 
   function compareVersions(a, b) {
     var x = a.split(/[.+-]/), y = b.split(/[.+-]/);
@@ -67,8 +78,23 @@
     var params = new URLSearchParams(location.hash.replace(/^#/, ""));
     var v = params.get("v");
     var c = params.get("c");
+    var e = params.get("e");
     if (v !== null && !/^[0-9A-Za-z.+ -]{1,32}$/.test(v)) v = null;
     if (c !== null && !/^[0-9]{1,9}$/.test(c)) c = null;
+    // Only the two published editions; apps up to 0.4.0 send no e (and Labor's is ignored):
+    // they get the Offline-Version, which is what they have (no internet permission).
+    if (e !== null && !/^(offline|karte)$/.test(e)) e = null;
+
+    var mine = EDITIONS[e === "karte" ? "karte" : "offline"];
+    var other = EDITIONS[e === "karte" ? "offline" : "karte"];
+    downloadLink.href = mine.url;
+    downloadLink.textContent = mine.label + " herunterladen";
+    otherLink.href = other.url;
+    otherLink.textContent = other.label + " herunterladen";
+    otherText.textContent = e === "karte"
+      ? "Zur Offline-Version wechseln (ohne Internet-Berechtigung):"
+      : "Wer Messwerte für die Lärmkarte teilen möchte:";
+    var label = e !== null ? EDITIONS[e].label : null;
 
     var newer;
     if (c !== null) newer = parseInt(c, 10) < latestCode;
@@ -80,11 +106,12 @@
       hints.hidden = true;
     } else if (newer) {
       status.textContent = "Update verfügbar: Version " + latest +
-        (v !== null ? " (installiert: " + v + ")" : "");
+        (v !== null ? " (installiert: " + v + (label !== null ? ", " + label : "") + ")" : "");
       download.hidden = false;
       hints.hidden = false;
     } else {
-      status.textContent = "Ihre Version " + (v !== null ? v : latest) + " ist aktuell.";
+      status.textContent = "Ihre Version " + (v !== null ? v : latest) +
+        (label !== null ? " (" + label + ")" : "") + " ist aktuell.";
       download.hidden = true;
       hints.hidden = true;
     }

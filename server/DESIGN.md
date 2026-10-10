@@ -47,7 +47,8 @@ These rules are the design. They go into PRIVACY.md and the website when the fea
    so (swisstopo tiles and our own API host only; see section 7).
 8. **Minimisation on publish.** Event times are published at hour resolution (counts and
    peak per hour), never as a per-second list. Device models are published only as counts
-   per model over the whole network («Beteiligte Geräte»), never per cell.
+   per model over the whole network («Beteiligte Geräte»), never per cell. The usage figures
+   of `stats.json` (§6.4) are likewise whole-network counts only.
 
 ## 3. Cell ids
 
@@ -182,6 +183,7 @@ minutes(device_id, start_utc INT, start_iso TEXT, … all fields of 4.3 …, rec
         PRIMARY KEY(device_id, start_utc))
 events(device_id, start_utc INT, start_iso TEXT, … all fields of 4.4 …, received_at,
        PRIMARY KEY(device_id, start_utc))
+counters(name TEXT PK, value INT)          -- schema v2; only 'devices_deleted' (§6.4)
 ```
 
 `token_hash` is SHA-256 of the token; the token itself is never stored. `hidden` lets the
@@ -245,6 +247,42 @@ night: `{ "hour": "23", "laeq_db", "l90_db", "l10_db", "events": {…by category
 
 `cells.json` for a past night (last 90 nights kept), so the map has a date control.
 
+### 6.4 `stats.json` — usage figures of the whole project
+
+Written in the same publish run, served the same way (`/v1/map/stats.json`, same cache and
+CORS headers), and printed by `python -m stadtlaerm_server stats`. Counts only:
+
+```json
+{
+  "generated_at": "2026-10-25T06:40:00+01:00",
+  "devices_registered": 6, "devices_with_site": 4, "devices_ever_shared": 5,
+  "devices_active_7d": 3, "devices_active_30d": 4, "devices_deleted_total": 0,
+  "cells_with_data_30d": 2, "nights_shared_total": 14,
+  "app_versions": { "0.5.0": 2, "andere": 1, "unbekannt": 1 },
+  "registrations_by_week": [ { "week": "2026-W32", "devices": 1 }, "… 12 weeks, oldest first …" ]
+}
+```
+
+The exact definitions are in `server/stadtlaerm_server/stats.py`. In short: active = a valid
+minute in the window (the rule of `network.devices_active_7d`, but over every device, hidden
+and site-less ones included); `devices_ever_shared` counts minutes already reduced to hourly
+rows by retention; `app_versions` is the version reported at registration (the server is not
+told about updates), per device active in the last 30 days, anything that does not look like a
+version number as `"andere"`; `registrations_by_week` counts only devices that still exist.
+`devices_deleted_total` is the only number kept for this purpose alone: one integer in
+`counters`, incremented in the same transaction as a device's deletion.
+
+**Privacy.** The file adds no new data collection and no new kind of data: every figure is a
+count over the whole network, computed from the rows the map already uses, with no place
+(no cell, no breakdown by area), no device id, no time finer than an ISO week (and only for
+registrations), and no IP address — the server has none to give (no access log in Caddy or
+uvicorn; rate limits keep IPs in memory only). A deletion still removes every row of the
+device (§2.4); what remains is +1 on an anonymous counter, which cannot be traced back to a
+device. So §2 is not weakened. No breakdown finer than the fields above may be added without
+changing this section first. The app's Offline-Version has no internet permission and
+contributes nothing to this file; only devices that switched on «Messwerte teilen» in the
+Karten-Version are counted.
+
 ## 7. The map page (`docs/karte.html`)
 
 - Own CSP: `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:
@@ -301,6 +339,11 @@ request body ≤ 2 MB, strict schema validation (values outside 0–140 dB, cove
 0–1, starts more than 7 days old or in the future are rejected with the reason).
 
 ## 9. App changes (public flavour)
+
+(Since 0.5.0 the public app is published in two editions with the same app id: the
+**Karten-Version**, Gradle flavour `public`, which has everything below, and the
+**Offline-Version**, flavour `offline`, which has no `INTERNET` permission and no
+«Messwerte teilen» at all. See PRIVACY.md.)
 
 - Manifest gains `INTERNET` (the `tools:node="remove"` goes); `PRIVACY.md`, `README.md`
   and the website change in the same release to say: internet is used only for the opt-in

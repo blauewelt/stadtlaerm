@@ -17,8 +17,12 @@
   <h1>Stadtlärm</h1>
   <p class="claim">Lärm messen, wo er stört.</p>
   <p class="lead">Ein offenes Messnetz für Strassenlärm, von Anwohnerinnen und Anwohnern für Anwohnerinnen und Anwohner, beginnend in Zürich.</p>
-  <a class="button" href="download/stadtlaerm.apk" download type="application/vnd.android.package-archive">App herunterladen (Android, Testversion)</a>
-  <p class="button-note">Version 0.5.0, 18,7 MB, für Android 8 oder neuer. <a href="#installation">So wird sie installiert.</a></p>
+  <!-- Release checklist: the release tag in both download URLs (here, in #installation and in update.html). -->
+  <p class="downloads">
+    <a class="button" href="https://github.com/blauewelt/stadtlaerm/releases/download/v0.5.0/stadtlaerm.apk" type="application/vnd.android.package-archive">App herunterladen (Android, Offline-Version)</a>
+    <a class="button button-secondary" href="https://github.com/blauewelt/stadtlaerm/releases/download/v0.5.0/stadtlaerm-karte.apk" type="application/vnd.android.package-archive">Karten-Version herunterladen</a>
+  </p>
+  <p class="button-note">Testversion 0.5.0, für Android 8 oder neuer. Die Offline-Version hat keine Internet-Berechtigung; mit der Karten-Version können Sie Messwerte für die Lärmkarte teilen. <a href="#version">Welche Version?</a> <a href="#installation">So wird sie installiert.</a></p>
 
   <figure class="night">
     <picture>
@@ -44,22 +48,34 @@
 
 <section id="karte">
   <h2>Lärmkarte</h2>
-  <p>Die gemeinsame Karte zeigt pro Hektare (100&nbsp;×&nbsp;100&nbsp;m) den mittleren Pegel der Nacht, wie stark er schwankt und wie viele laute Töffs und Poser pro Stunde vorbeifahren. Genauer wird kein Standort gezeigt. Sie wird aus der App gespeist: Seit Version 0.5.0 können Sie unter «Einstellungen → Messwerte teilen» freiwillig mitmachen. Das Teilen ist ausgeschaltet, bis Sie es selbst einschalten.</p>
+  <p>Die gemeinsame Karte zeigt pro Hektare (100&nbsp;×&nbsp;100&nbsp;m) den mittleren Pegel der Nacht, wie stark er schwankt und wie viele laute Töffs und Poser pro Stunde vorbeifahren. Genauer wird kein Standort gezeigt. Sie wird aus der App gespeist: Mit der <a href="#version">Karten-Version</a> (ab 0.5.0) können Sie unter «Einstellungen → Messwerte teilen» freiwillig mitmachen. Das Teilen ist ausgeschaltet, bis Sie es selbst einschalten.</p>
   <p><a href="karte.html">Zur Lärmkarte</a></p>
   <p class="small">Die Kartenseite ist die einzige Seite, die etwas von anderen Servern lädt: die Kartenbilder von swisstopo und die Messwerte von api.stadtlaerm.ch.</p>
 </section>
 
 <section id="datenschutz">
   <h2>Datenschutz</h2>
-<p>Die App speichert und überträgt kein Audio: Der Ton wird nur im Arbeitsspeicher ausgewertet, auf dem Telefon bleiben nur Pegel und Statistiken. Auch die Erkennung der Lärmquelle läuft auf dem Telefon. Bis Version 0.4.0 hatte die App überhaupt keine Internet-Berechtigung. Seit Version 0.5.0 nutzt sie das Internet für genau eine Sache, das freiwillige «Messwerte teilen» für die Lärmkarte: Es ist ausgeschaltet, bis Sie es selbst einschalten, sendet nur Pegel und Ereignisse mit der Hektare (100&nbsp;×&nbsp;100&nbsp;m), nie Audio und nie den genauen Standort, nur an den Server des Projekts in der Schweiz (api.stadtlaerm.ch), und Sie können die Daten dort jederzeit aus der App löschen. Der Quellcode ist offen, jede und jeder kann ihn auf <a href="https://github.com/blauewelt/stadtlaerm">GitHub</a> nachprüfen, erklärt in <a href="https://github.com/blauewelt/stadtlaerm/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
-  <p>Auch diese Website hält sich daran: Sie setzt keine Cookies und lädt nichts von Dritten, also keine Schriften, keine Statistikdienste und keine fremden Bilder. Einzige Ausnahme ist die <a href="karte.html">Lärmkarte</a>, die die Kartenbilder von swisstopo lädt. Mehr dazu in der <a href="datenschutz.html">Datenschutzerklärung</a>.</p>
+<p>Die App speichert und überträgt kein Audio: Der Ton wird nur im Arbeitsspeicher ausgewertet, auf dem Telefon bleiben nur Pegel und Statistiken. Auch die Erkennung der Lärmquelle läuft auf dem Telefon. Die Offline-Version hat, wie alle Versionen bis 0.4.0, überhaupt keine Internet-Berechtigung. Die Karten-Version (ab 0.5.0) nutzt das Internet für genau eine Sache, das freiwillige «Messwerte teilen» für die Lärmkarte: Es ist ausgeschaltet, bis Sie es selbst einschalten, sendet nur Pegel und Ereignisse mit der Hektare (100&nbsp;×&nbsp;100&nbsp;m), nie Audio und nie den genauen Standort, nur an den Server des Projekts in der Schweiz (api.stadtlaerm.ch), und Sie können die Daten dort jederzeit aus der App löschen. Der Quellcode ist offen, jede und jeder kann ihn auf <a href="https://github.com/blauewelt/stadtlaerm">GitHub</a> nachprüfen, erklärt in <a href="https://github.com/blauewelt/stadtlaerm/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
+  <p>Auch diese Website hält sich daran: Sie setzt keine Cookies und lädt nichts von Dritten, also keine Schriften, keine Statistikdienste und keine fremden Bilder. Einzige Ausnahme ist die <a href="karte.html">Lärmkarte</a>, die die Kartenbilder von swisstopo lädt. Die App-Dateien selbst liefert GitHub aus, wo auch der Quellcode liegt; das Projekt erfährt dabei nur, wie oft jede Datei heruntergeladen wurde. Mehr dazu in der <a href="datenschutz.html">Datenschutzerklärung</a>.</p>
+</section>
+
+<section id="version">
+  <h2>Welche Version?</h2>
+  <p>Die App gibt es in zwei Ausführungen. Messen, Grafiken und Export sind in beiden gleich.</p>
+  <dl class="editions">
+    <dt>Offline-Version (empfohlen)</dt>
+    <dd>Hat überhaupt keine Internet-Berechtigung. Ihre Messwerte verlassen das Telefon nur, wenn Sie sie selbst exportieren (als CSV-Datei) und weitergeben. Wer Version 0.4.0 oder älter installiert hat, bekommt mit ihr ein gewöhnliches Update ohne neue Berechtigung.</dd>
+    <dt>Karten-Version</dt>
+    <dd>Kann Messwerte für die gemeinsame <a href="karte.html">Lärmkarte</a> senden, aber nur, wenn Sie «Messwerte teilen» selbst einschalten: Pegel und Ereignisse mit der Hektare, nie Audio und nie den genauen Standort, nur an den Server des Projekts in der Schweiz. Solange das Teilen ausgeschaltet ist, sendet sie nichts.</dd>
+  </dl>
+  <p>Wechseln geht jederzeit: Die andere Version einfach über die installierte installieren, die Messungen bleiben erhalten. Wer von der Karten-Version zur Offline-Version wechselt und seine Daten auf dem Server löschen möchte, tut das vorher in der Karten-Version unter «Messwerte teilen».</p>
 </section>
 
 <section id="installation">
   <h2>Installation</h2>
-  <p>Die App ist (noch) nicht im Play Store. Sie wird direkt von dieser Seite installiert:</p>
+  <p>Die App ist (noch) nicht im Play Store. Sie wird direkt als Datei (APK) installiert:</p>
   <ol class="steps">
-    <li><a href="download/stadtlaerm.apk" download type="application/vnd.android.package-archive">App herunterladen</a>.</li>
+    <li>Die <a href="https://github.com/blauewelt/stadtlaerm/releases/download/v0.5.0/stadtlaerm.apk" type="application/vnd.android.package-archive">Offline-Version</a> oder die <a href="https://github.com/blauewelt/stadtlaerm/releases/download/v0.5.0/stadtlaerm-karte.apk" type="application/vnd.android.package-archive">Karten-Version herunterladen</a> herunterladen.</li>
     <li>Die heruntergeladene Datei in der App «Dateien» öffnen (Ordner «Downloads»). Der Download-Dialog des Browsers verweigert das Öffnen oft.</li>
     <li>Falls Android fragt: für diese App «Unbekannte Apps installieren» erlauben, dann zurück und installieren.</li>
     <li>Falls Google Play Protect warnt: «Weitere Details» antippen, dann «Trotzdem installieren».</li>
@@ -68,16 +84,18 @@
   </ol>
 
   <div class="note">
-    <p>Ab Version 0.2.0 installiert sich die neue Version über die alte und behält die Messwerte. Nur wer noch eine Version 0.1.x hat, muss sie zuerst deinstallieren, weil diese anders signiert war; vorher unter «Daten» die Messwerte als CSV exportieren, sonst gehen sie verloren.</p>
+    <p>Ab Version 0.2.0 installiert sich die neue Version über die alte und behält die Messwerte; das gilt auch für den Wechsel zwischen Offline- und Karten-Version. Nur wer noch eine Version 0.1.x hat, muss sie zuerst deinstallieren, weil diese anders signiert war; vorher unter «Daten» die Messwerte als CSV exportieren, sonst gehen sie verloren.</p>
   </div>
 
   <dl class="facts">
     <dt>Version</dt><dd>0.5.0 (Testversion)</dd>
-    <dt>Grösse</dt><dd>18,7 MB</dd>
     <dt>Android</dt><dd>8.0 oder neuer</dd>
-    <dt>SHA-256</dt><dd><code class="hash">b48a28ded7a2c8b62b0c785b5c83b17e46a5f5fa7ff00a51e36b590bdda685de</code></dd>
+    <dt>Offline-Version</dt><dd>stadtlaerm.apk, SIZE_OFFLINE</dd>
+    <dt>SHA-256</dt><dd><code class="hash">SHA256_OFFLINE</code></dd>
+    <dt>Karten-Version</dt><dd>stadtlaerm-karte.apk, SIZE_KARTE</dd>
+    <dt>SHA-256</dt><dd><code class="hash">SHA256_KARTE</code></dd>
   </dl>
-  <p class="small">Die Prüfsumme zeigt, ob die Datei unverändert angekommen ist. Wie man sie und die Signatur prüft, steht in der <a href="https://github.com/blauewelt/stadtlaerm/blob/main/android/README.md#install-sideload">Anleitung auf GitHub</a> (Englisch).</p>
+  <p class="small">Die Dateien liefert GitHub aus, wo auch der Quellcode liegt (<a href="https://github.com/blauewelt/stadtlaerm/releases">Releases</a>). GitHub zählt, wie oft jede Datei heruntergeladen wurde; diese Zahl ist das Einzige, was das Projekt über die Downloads erfährt. Die Prüfsumme zeigt, ob die Datei unverändert angekommen ist. Wie man sie und die Signatur prüft, steht in der <a href="https://github.com/blauewelt/stadtlaerm/blob/main/android/README.md#install-sideload">Anleitung auf GitHub</a> (Englisch).</p>
 </section>
 
 <section id="kalibrieren">
@@ -94,7 +112,7 @@
 <section id="stand">
   <h2>Stand des Projekts</h2>
   <ul class="status">
-    <li><strong>App für Android</strong>Testversion 0.5.0. Sie ist noch nicht auf vielen Telefonen erprobt; Rückmeldungen helfen.</li>
+    <li><strong>App für Android</strong>Testversion 0.5.0, als Offline-Version und als Karten-Version. Sie ist noch nicht auf vielen Telefonen erprobt; Rückmeldungen helfen.</li>
     <li><strong>Sensor fürs Fensterbrett</strong>In Entwicklung: ein kleines Messgerät mit Solarzelle, das fest am Fenster misst, mit derselben Messmethode und Kalibrierung wie die App.</li>
     <li><strong>Stadt Zürich</strong>Austausch mit der Stadt Zürich (Umwelt- und Gesundheitsschutz) ist aufgenommen.</li>
   </ul>

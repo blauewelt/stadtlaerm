@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- OFFLINE edition only («Offline-Version», the default download docs/download/stadtlaerm.apk):
+<!-- OFFLINE edition only («Offline-Version», the default download, release asset stadtlaerm.apk):
      no network access at all, like every published version up to 0.4.0. Removes anything a
      library (e.g. WorkManager) might merge in. src/public/AndroidManifest.xml (INTERNET for
      «Messwerte teilen») is not part of this variant; the upload is switched off

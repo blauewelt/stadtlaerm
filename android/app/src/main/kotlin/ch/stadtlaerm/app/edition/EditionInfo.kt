@@ -6,9 +6,9 @@ package ch.stadtlaerm.app.edition
  * comes from the Gradle flavour (app/build.gradle.kts):
  *
  * - [OFFLINE] «Offline-Version» (flavour `offline`, ch.stadtlaerm.app): no internet permission;
- *   the default download, docs/download/stadtlaerm.apk.
+ *   the default download, GitHub release asset stadtlaerm.apk.
  * - [KARTE] «Karten-Version» (flavour `public`, ch.stadtlaerm.app): internet only for the opt-in
- *   «Messwerte teilen»; docs/download/stadtlaerm-karte.apk.
+ *   «Messwerte teilen»; GitHub release asset stadtlaerm-karte.apk.
  * - [LABOR] «Labor-Version» (flavour `labor`, ch.stadtlaerm.labor): never published.
  *
  * Offline and Karten-Version share the app id and the signing key: installing one over the other

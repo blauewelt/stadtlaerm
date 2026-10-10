@@ -28,17 +28,33 @@
   <p>Die Website wird über GitHub Pages bereitgestellt (GitHub, Inc.). Beim Aufruf verarbeitet GitHub technisch bedingt Daten wie die IP-Adresse, zum Beispiel für Betrieb und Sicherheit. Dafür gilt das <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub General Privacy Statement</a>. Dasselbe gilt für Links auf github.com, etwa zum Quellcode.</p>
 </section>
 
+<section id="download">
+  <h2>Download der App</h2>
+  <p>Die App-Dateien (APK) liegen bei GitHub, wo auch der Quellcode liegt, als Anhang einer Veröffentlichung («Release») pro Version. Die Download-Links dieser Website führen dorthin. Beim Herunterladen erfährt GitHub technisch bedingt Ihre IP-Adresse, wie beim Aufruf dieser Website; es gilt dasselbe Privacy Statement. Das Projekt erfährt davon nur eine Zahl pro Datei: wie oft sie insgesamt heruntergeladen wurde. Diese Zahl zeigt GitHub öffentlich an; sie zählt Downloads, nicht Personen, und sagt nicht, wer, wann oder von wo.</p>
+</section>
+
 <section id="app">
   <h2>Die App</h2>
   <ul class="features">
     <li>Der Ton vom Mikrofon wird nur im Arbeitsspeicher ausgewertet, in kleinen Zwischenspeichern von höchstens etwa einer Sekunde, die laufend überschrieben werden. Es wird nie Audio gespeichert.</li>
     <li>Gespeichert werden nur Pegel und Statistiken: Lärmpegel pro Minute, laute Ereignisse (Zeit, Dauer, Spitzenpegel, wahrscheinliche Quelle) und Kalibrierungen. Diese Daten liegen nur auf Ihrem Telefon.</li>
-    <li>Die App nutzt das Internet für genau eine Sache: das freiwillige «Messwerte teilen» für die Lärmkarte (ab Version 0.5.0; bis Version 0.4.0 hatte die App gar keine Internet-Berechtigung). Es ist ausgeschaltet, bis Sie es unter «Einstellungen → Messwerte teilen» einschalten. Eingeschaltet sendet die App nur die Minutenpegel und die lauten Ereignisse zusammen mit der Hektare (100&nbsp;×&nbsp;100&nbsp;m), in der der Sensor steht – nie Audio, nie den genauen Standort, nie die Rohbezeichnungen des Klassifikators – und nur an den Server des Projekts in der Schweiz (api.stadtlaerm.ch). Das Gerät erhält dafür eine zufällige Kennung ohne Bezug zu Ihrer Person. Mit «Meine Daten auf dem Server löschen» werden alle Daten des Geräts sofort gelöscht. Es gibt keine Statistikdienste, keine Absturzberichte und keine Sicherung in die Cloud. «Nach Update suchen» öffnet nur die Seite «Update prüfen» im Browser.</li>
+    <li>Die App gibt es seit Version 0.5.0 in zwei Ausführungen. Die <strong>Offline-Version</strong> hat, wie alle Versionen bis 0.4.0, gar keine Internet-Berechtigung: Sie kann nichts senden, auch keine Nutzungsstatistik.</li>
+    <li>Die <strong>Karten-Version</strong> nutzt das Internet für genau eine Sache: das freiwillige «Messwerte teilen» für die Lärmkarte. Es ist ausgeschaltet, bis Sie es unter «Einstellungen → Messwerte teilen» einschalten. Eingeschaltet sendet die App nur die Minutenpegel und die lauten Ereignisse zusammen mit der Hektare (100&nbsp;×&nbsp;100&nbsp;m), in der der Sensor steht – nie Audio, nie den genauen Standort, nie die Rohbezeichnungen des Klassifikators – und nur an den Server des Projekts in der Schweiz (api.stadtlaerm.ch). Das Gerät erhält dafür eine zufällige Kennung ohne Bezug zu Ihrer Person. Mit «Meine Daten auf dem Server löschen» werden alle Daten des Geräts sofort gelöscht; übrig bleibt nur, dass ein Zähler der gelöschten Geräte um eins steigt. Es gibt keine Statistikdienste, keine Absturzberichte und keine Sicherung in die Cloud. «Nach Update suchen» öffnet nur die Seite «Update prüfen» im Browser.</li>
     <li>Die Erkennung der Lärmquelle läuft auf dem Telefon. Sie hält fest, welche Art von Geräusch vorkam (etwa «Stimmen»), nicht was gesagt wurde.</li>
-    <li>Sonst verlassen Daten das Telefon nur, wenn Sie selbst eine CSV-Datei exportieren und teilen. Bedenken Sie dabei: Ein Eintrag wie «Stimmen, 23:41» verrät, dass um diese Zeit in der Nähe gesprochen wurde.</li>
+    <li>Sonst – und in der Offline-Version überhaupt – verlassen Daten das Telefon nur, wenn Sie sie selbst exportieren (als CSV-Datei) und weitergeben. Bedenken Sie dabei: Ein Eintrag wie «Stimmen, 23:41» verrät, dass um diese Zeit in der Nähe gesprochen wurde.</li>
     <li>Löschen können Sie die Daten in der App unter «Daten» oder indem Sie die App deinstallieren.</li>
   </ul>
   <p>Wie der Quellcode diese Zusagen umsetzt und wie man sie nachprüft, steht in <a href="https://github.com/blauewelt/stadtlaerm/blob/main/PRIVACY.md">PRIVACY.md</a> (Englisch).</p>
+</section>
+
+<section id="statistik">
+  <h2>Öffentliche Zahlen</h2>
+  <p>Damit das Projekt weiss, ob die App genutzt wird, gibt es zwei Zahlenquellen, beide öffentlich und beide nur Summen über das ganze Projekt:</p>
+  <ul class="features">
+    <li>Die Download-Zahl pro App-Datei, die GitHub anzeigt (siehe oben).</li>
+    <li>Die Datei <a href="https://api.stadtlaerm.ch/v1/map/stats.json">stats.json</a> des Projekt-Servers. Sie wird aus den Daten berechnet, die für die Lärmkarte ohnehin vorhanden sind, und enthält nur Anzahlen: wie viele Geräte angemeldet sind, wie viele je Messwerte geteilt haben, wie viele in den letzten 7 und 30 Tagen aktiv waren, wie viele ihre Daten gelöscht haben, wie viele Hektaren auf der Karte sind, wie viele Nächte geteilt wurden, wie viele aktive Geräte welche App-Version angegeben haben und wie viele Geräte sich pro Kalenderwoche angemeldet haben. Keine Kennungen, keine Orte, keine IP-Adressen.</li>
+  </ul>
+  <p>Über die Offline-Version erfährt das Projekt ausser der Download-Zahl nichts.</p>
 </section>
 
 <section id="kontakt">

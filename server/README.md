@@ -17,7 +17,8 @@ retention job. Caddy in front of it handles TLS.
 | `stadtlaerm_server/schemas.py` | Request validation (§4 fields, §8 limits) |
 | `stadtlaerm_server/db.py` | SQLite schema (§5), migrations by version, row helpers |
 | `stadtlaerm_server/aggregate.py` | Night and hour arithmetic, pure functions (§6.1 rules) |
-| `stadtlaerm_server/publish.py` | Builds and atomically writes `cells.json`, `cells/{cell}.json`, `nights/{date}.json` |
+| `stadtlaerm_server/publish.py` | Builds and atomically writes `cells.json`, `cells/{cell}.json`, `nights/{date}.json`, `stats.json` |
+| `stadtlaerm_server/stats.py` | The project-wide usage counts of `stats.json` (DESIGN.md §6.4) |
 | `stadtlaerm_server/retention.py` | Reduces raw rows older than 2 years to hourly aggregates |
 | `stadtlaerm_server/synthetic.py` | Invented test data (a port of the app's chart test fixtures) |
 | `scripts/make_fixture.py` | Generates `example_cells.json` / `example_cell.json` through the real publisher |
@@ -44,7 +45,9 @@ curl -s -X POST localhost:8000/v1/devices -H 'Content-Type: application/json' \
 ```
 
 Other commands: `python -m stadtlaerm_server publish` rebuilds the map files once,
-`python -m stadtlaerm_server retention` runs the retention job once.
+`python -m stadtlaerm_server retention` runs the retention job once,
+`python -m stadtlaerm_server stats` prints the usage counts of `stats.json` (computed now,
+nothing written).
 
 To regenerate the example fixture after a format change: `python scripts/make_fixture.py`
 (about 20 s). It writes synthetic nights for 25 hectares into a temporary database and runs the
@@ -60,7 +63,8 @@ cd server
 The tests cover the API round trip (register, site, minutes and events as plain and gzip JSON,
 duplicates, delete, auth and validation failures, rate limits, body limits, map headers),
 the night arithmetic on synthetic nights (the app's Friday fixture, a 9-hour DST night, a
-7-hour one, low-coverage minutes, two- and three-device cells), publishing, and retention.
+7-hour one, low-coverage minutes, two- and three-device cells), publishing, retention, and
+the usage counts of `stats.json` (every field, after a delete and after retention).
 
 ## The API in one screen
 
@@ -72,6 +76,7 @@ the night arithmetic on synthetic nights (the app's Friday fixture, a 9-hour DST
 | `POST /v1/devices/{id}/events` `[…≤ 2000]` | Bearer | `200 {accepted, duplicates, rejected}` |
 | `DELETE /v1/devices/{id}` | Bearer | `204` after every row is gone |
 | `GET /v1/map/cells.json`, `/v1/map/cells/{cell}.json`, `/v1/map/nights/{date}.json` | – | static JSON |
+| `GET /v1/map/stats.json` | – | static JSON: project-wide usage counts (below) |
 | `GET /healthz` | – | `{ok: true}` |
 
 Bodies may be plain JSON or gzip (`Content-Encoding: gzip`), at most 2 MB on the wire.
@@ -145,7 +150,9 @@ access, and the `stadtlaerm.ch` DNS zone (it is at Infomaniak already).
 7. **Updates.** `cd /opt/stadtlaerm && sudo git pull && cd server && sudo docker compose up -d --build`.
    Schema migrations run automatically at startup (table `schema_version`).
 
-**Operator tasks.** Keep a misbehaving device out of the map without deleting its data:
+**Operator tasks.** Usage numbers (the same as `https://api.stadtlaerm.ch/v1/map/stats.json`):
+`sudo docker compose exec app python -m stadtlaerm_server stats`.
+Keep a misbehaving device out of the map without deleting its data:
 `sudo docker compose exec app sqlite3 /data/stadtlaerm.sqlite "UPDATE devices SET hidden = 1 WHERE id = '…'"`
 (it disappears on the next publish; its owner can still delete it).
 
@@ -207,3 +214,13 @@ These are choices the design left open; the website builds against them (see the
   a device counts as active if it has a valid minute in the last 7 days. Models without a name
   are counted as `"unbekannt"`.
 - All numbers are rounded to 0.1 dB / 0.1 events per hour; `measured_share` to 0.01.
+- **`stats.json`** (DESIGN.md §6.4) is written in every publish run next to `cells.json`:
+  `generated_at`, `devices_registered` (hidden included), `devices_with_site`,
+  `devices_ever_shared` (≥ 1 minute record ever, also after retention), `devices_active_7d` /
+  `devices_active_30d` (a valid minute in the window, every device — so it can exceed
+  `network.devices_active_7d`, which counts only devices on the map), `devices_deleted_total`
+  (a single counter, table `counters`, schema v2), `cells_with_data_30d` (= the number of cells
+  in `cells.json`), `nights_shared_total` (device-nights with a valid minute, hourly rows
+  included), `app_versions` (devices active in 30 days per registration-time version;
+  non-version strings → `"andere"`), `registrations_by_week` (12 ISO weeks, Europe/Zurich,
+  oldest first, devices that still exist). Whole-network counts only, never per cell or device.

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- PUBLIC edition («Karten-Version», docs/download/stadtlaerm-karte.apk) only; NOT merged into
+<!-- PUBLIC edition («Karten-Version», release asset stadtlaerm-karte.apk) only; NOT merged into
      the offline edition, which shares the Kotlin sources of src/public/ but not this manifest.
      Network access for the opt-in upload «Messwerte teilen» (server/DESIGN.md §2, §4; PRIVACY.md). Used by exactly one class, upload/UploadClient.kt, for exactly one host
      (BuildConfig.STADTLAERM_API, https://api.stadtlaerm.ch), and only after the person switched

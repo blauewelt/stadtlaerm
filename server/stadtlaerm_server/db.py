@@ -94,6 +94,14 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (device_id, hour_utc)
     ) WITHOUT ROWID;
     """,
+    # 2: named integer counters for stats.json (DESIGN.md §6.4). Only `devices_deleted` so far:
+    # how many devices deleted themselves — one number, no ids, no dates.
+    """
+    CREATE TABLE counters (
+        name TEXT PRIMARY KEY,
+        value INTEGER NOT NULL
+    );
+    """,
 ]
 
 MINUTE_COLUMNS = (
@@ -187,11 +195,18 @@ def upsert_rows(conn: sqlite3.Connection, table: str, columns: Sequence[str], ro
 
 
 def delete_device(conn: sqlite3.Connection, device_id: str) -> None:
-    """Every row of the device, in one transaction (DESIGN.md §2.4, §4.5)."""
+    """Every row of the device, in one transaction (DESIGN.md §2.4, §4.5).
+
+    The only thing left behind is +1 on the anonymous counter `devices_deleted` (stats.json).
+    """
     with conn:
         for table in ("minutes", "events", "hourly", "sites"):
             conn.execute(f"DELETE FROM {table} WHERE device_id = ?", (device_id,))
-        conn.execute("DELETE FROM devices WHERE id = ?", (device_id,))
+        if conn.execute("DELETE FROM devices WHERE id = ?", (device_id,)).rowcount:
+            conn.execute(
+                "INSERT INTO counters (name, value) VALUES ('devices_deleted', 1) "
+                "ON CONFLICT (name) DO UPDATE SET value = value + 1"
+            )
 
 
 # ---- reads for aggregation ---------------------------------------------------------------

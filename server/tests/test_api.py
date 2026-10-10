@@ -242,7 +242,7 @@ def test_map_files_are_served_with_cache_and_cors(make_client, settings):
 
 
 def test_schema_version_and_wal(client, settings):
-    assert rows(settings, "SELECT version FROM schema_version") == [(1,)]
+    assert rows(settings, "SELECT version FROM schema_version") == [(2,)]
     assert rows(settings, "PRAGMA journal_mode") == [("wal",)]
     idx = {r[0] for r in rows(settings, "SELECT name FROM sqlite_master WHERE type = 'index'")}
     assert {"minutes_start", "events_start", "sites_cell"} <= idx

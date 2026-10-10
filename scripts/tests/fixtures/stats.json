@@ -1,0 +1,66 @@
+{
+  "generated_at": "2026-10-25T06:40:00+01:00",
+  "devices_registered": 6,
+  "devices_with_site": 4,
+  "devices_ever_shared": 5,
+  "devices_active_7d": 3,
+  "devices_active_30d": 4,
+  "devices_deleted_total": 0,
+  "cells_with_data_30d": 2,
+  "nights_shared_total": 14,
+  "app_versions": {
+    "0.5.0": 2,
+    "andere": 1,
+    "unbekannt": 1
+  },
+  "registrations_by_week": [
+    {
+      "week": "2026-W32",
+      "devices": 1
+    },
+    {
+      "week": "2026-W33",
+      "devices": 0
+    },
+    {
+      "week": "2026-W34",
+      "devices": 0
+    },
+    {
+      "week": "2026-W35",
+      "devices": 0
+    },
+    {
+      "week": "2026-W36",
+      "devices": 0
+    },
+    {
+      "week": "2026-W37",
+      "devices": 0
+    },
+    {
+      "week": "2026-W38",
+      "devices": 0
+    },
+    {
+      "week": "2026-W39",
+      "devices": 0
+    },
+    {
+      "week": "2026-W40",
+      "devices": 1
+    },
+    {
+      "week": "2026-W41",
+      "devices": 0
+    },
+    {
+      "week": "2026-W42",
+      "devices": 0
+    },
+    {
+      "week": "2026-W43",
+      "devices": 2
+    }
+  ]
+}

@@ -3,18 +3,44 @@
 Stadtlärm measures noise levels. It never records audio. This is the core promise of the
 project, and this page explains how the code keeps it, so anyone can check.
 
-Everything on this page is about the **public app** (`ch.stadtlaerm.app`, the APK on
-stadtlaerm.ch). Since v0.3.3 the repository can also build a separate diagnostics app that *can*
-record audio; it is a different app, is never published, and the public app contains none of its
-code. See [Labor-Build](#labor-build) below.
+Everything on this page is about the **public app** (`ch.stadtlaerm.app`, the APKs linked from
+stadtlaerm.ch). Since v0.5.0 it is published in two editions, the **Offline-Version** (no
+internet permission at all) and the **Karten-Version** (internet only for the opt-in «Messwerte
+teilen»), see [Editions](#editions-from-v050). Since v0.3.3 the repository can also build a
+separate diagnostics app that *can* record audio; it is a different app, is never published, and
+neither published edition contains any of its code. See [Labor-Build](#labor-build) below.
+
+## Editions (from v0.5.0)
+
+| | Offline-Version | Karten-Version |
+|---|---|---|
+| File (GitHub Release `vX.Y.Z`) | `stadtlaerm.apk` — the default download | `stadtlaerm-karte.apk` |
+| Gradle flavour | `offline` | `public` |
+| App id, signing key | `ch.stadtlaerm.app`, release key | the same |
+| `INTERNET`, `ACCESS_NETWORK_STATE` | **no** (removed in `app/src/offline/AndroidManifest.xml`) | yes, only for «Messwerte teilen» |
+| «Messwerte teilen» | does not exist (`BuildConfig.UPLOAD_AVAILABLE = false`) | off until you switch it on |
+| Data leaves the phone | only when *you* export it (CSV; calibrations as JSON) and share it | the same, plus the opt-in upload |
+| Can report anything (usage, crashes, versions) | **no** — it has no way to | only what «Messwerte teilen» sends, below |
+
+Both editions are built from the same Kotlin sources (`app/src/main` and `app/src/public/kotlin`)
+and contain no recording code. Because they share the app id and the key, installing one over the
+other switches the edition and keeps the measurements. Every version up to v0.4.0 is equivalent to
+the Offline-Version (no `INTERNET`), so for those users the Offline-Version is an ordinary update
+without a new permission. The Offline-Version still contains the compiled upload classes (shared
+code), but they can never run: every entry point returns when `UPLOAD_AVAILABLE` is false, the
+settings card does not exist, and without `INTERNET` Android would refuse the socket anyway. When
+the Offline-Version is installed over a Karten-Version that had sharing on, it switches sharing
+off and cancels the scheduled upload jobs at its first start (`UploadModule.stopForOfflineEdition`);
+it keeps the device id and token so that the Karten-Version can still delete the data on the
+server later. Delete your server data in the Karten-Version *before* switching if you want it gone.
 
 ## Guarantees (app, since v0.1)
 
 1. **Raw audio never touches disk.** No code path writes samples to a file, a database, the
    cache, shared preferences or the clipboard.
 2. **Raw audio never leaves the app process.** There is no code that sends audio anywhere. Up to
-   v0.4.0 (the version published on stadtlaerm.ch) the manifest has no `INTERNET` permission at
-   all. **From v0.5.0** the public app has
+   v0.4.0, and in the **Offline-Version** from v0.5.0, the manifest has no `INTERNET` permission
+   at all. **From v0.5.0** the **Karten-Version** has
    `INTERNET` for exactly one purpose: the opt-in upload «Messwerte teilen» (see
    [«Messwerte teilen»](#messwerte-teilen-opt-in-upload-from-v050) below), which is **off until you
    switch it on**, sends only the minute and event *numbers* listed there, to one host
@@ -61,11 +87,15 @@ accordingly before you share them.
 
 ## How to verify
 
-- `aapt2 dump permissions stadtlaerm.apk` lists exactly: `RECORD_AUDIO`,
-  `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `WAKE_LOCK`
-  (plus AndroidX's internal `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`). Up to v0.4.0: no
-  `INTERNET`. From v0.5.0 additionally `INTERNET` and `ACCESS_NETWORK_STATE`, both only for
-  «Messwerte teilen» (below); still no location, Wi-Fi-state, boot or storage permission.
+- `aapt2 dump permissions <apk>` (Android SDK build-tools) lists exactly:
+  - **`stadtlaerm.apk`** (Offline-Version, and every version up to v0.4.0): `RECORD_AUDIO`,
+    `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `WAKE_LOCK`
+    (plus AndroidX's internal `ch.stadtlaerm.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`).
+    No `INTERNET`, no `ACCESS_NETWORK_STATE`.
+  - **`stadtlaerm-karte.apk`** (Karten-Version, from v0.5.0): the same plus `INTERNET` and
+    `ACCESS_NETWORK_STATE`, both only for «Messwerte teilen» (below).
+  - Neither has a location, Wi-Fi-state, boot or storage permission. `aapt2 dump badging` shows
+    `package: name='ch.stadtlaerm.app'` for both.
 - Search the source of the public app: `grep -rn "FileOutputStream\|openFileOutput\|Socket\|HttpURLConnection\|openConnection\|URL(" android/app/src/main android/app/src/public android/dsp/src/main`
   finds network code in exactly one file, `android/app/src/main/kotlin/ch/stadtlaerm/app/upload/UploadClient.kt`
   (the upload), and nothing in the audio path (`android/app/src/labor/` is the separate Labor build, see below). The only file writes are the CSV/JSON exports in
@@ -100,13 +130,14 @@ shows the app's traffic, which stays at zero while sharing is off.
 
 ## Labor-Build
 
-Since v0.3.3 the Android app has two product flavours (Gradle dimension `edition`):
+Since v0.3.3 the Android app has product flavours in the Gradle dimension `edition`; since
+v0.5.0 three of them (`offline`, `public`, `labor`):
 
-| | `public` | `labor` |
+| | `offline` and `public` (the two published editions) | `labor` |
 |---|---|---|
 | App id / name | `ch.stadtlaerm.app`, «Stadtlärm» | `ch.stadtlaerm.labor`, «Stadtlärm Labor» (red icon) |
-| Published | yes: `docs/download/`, linked from stadtlaerm.ch | **never**: not in `docs/`, not linked from the website |
-| Can record audio | no — the code does not exist in this app | yes, only after switching it on, see below |
+| Published | yes: GitHub Releases (`stadtlaerm.apk`, `stadtlaerm-karte.apk`), linked from stadtlaerm.ch; the offline APK also in `docs/download/` for old links | **never**: not in `docs/`, not in a release, not linked from the website |
+| Can record audio | no — the code does not exist in these apps | yes, only after switching it on, see below |
 
 The Labor build exists to debug the event detector and the sound-source classifier with real
 recordings. It is a separate app with its own app id (installed side by side, its own data); it
@@ -116,7 +147,8 @@ is signed with the same key only so that it can be updated.
 from `app/src/main/` plus the source set of its flavour. All code that writes audio — the clip
 assembler, the WAV and AAC writers, the manifest, the Labor UI — lives exclusively in
 `app/src/labor/` (`ch.stadtlaerm.app.labor.*` and the Labor `ch.stadtlaerm.app.edition.*`), so it
-is not compiled into the public APK at all. The shared code only contains:
+is not compiled into either published APK at all (the `offline` flavour adds only
+`app/src/public/kotlin` to its sources, not `app/src/labor/`). The shared code only contains:
 
 - `app/src/main/kotlin/ch/stadtlaerm/app/audio/AudioTap.kt`: an interface through which a build
   *could* see the capture blocks and the event lifecycle, and `NoAudioTap`, which does nothing;
@@ -133,7 +165,9 @@ The Labor build has no network access: its manifest (`app/src/labor/AndroidManif
 `INTERNET` and `ACCESS_NETWORK_STATE`, and «Messwerte teilen» does not exist in it
 (`BuildConfig.UPLOAD_AVAILABLE = false`). No storage permission in either build.
 
-**How to verify** (any public build, e.g. `app/build/outputs/apk/public/release/app-public-release.apk`):
+**How to verify** (on **both** published APKs: `app/build/outputs/apk/offline/release/app-offline-release.apk`
+= `stadtlaerm.apk` and `app/build/outputs/apk/public/release/app-public-release.apk` = `stadtlaerm-karte.apk`;
+the commands below use the second name, run them on each):
 
 1. Source: `find android/app/src -path '*labor*'` lists the only recording code;
    `grep -rln "FileOutputStream\|MediaMuxer\|MediaCodec\|RIFF" android/app/src/main android/app/src/public android/dsp/src/main`
@@ -154,8 +188,8 @@ The Labor build has no network access: its manifest (`app/src/labor/AndroidManif
    matches, and no dex string references `MediaMuxer`, `MediaCodec`, `RIFF`/`WAVE`,
    `manifest.jsonl` or the `labor` package. As a control, the same commands on the Labor APK find
    828 `ch.stadtlaerm.app.labor` entries and 98 matching strings.
-3. `aapt2 dump permissions` lists the permissions of «How to verify» above; for the Labor APK
-   without `INTERNET` and `ACCESS_NETWORK_STATE`.
+3. `aapt2 dump permissions` lists the permissions of «How to verify» above for each published APK;
+   for the Labor APK the Offline-Version's set (no `INTERNET`, no `ACCESS_NETWORK_STATE`).
 
 **What the Labor build records** (only after «Einstellungen → Labor → Audio während der Messung
 aufzeichnen» is switched on and confirmed; off by default): event clips (WAV, 16 kHz, 5 s before to
@@ -174,12 +208,20 @@ knows about it.
 [stadtlaerm.ch](https://stadtlaerm.ch) (source in `docs/`) is static HTML and CSS. It sets no
 cookies, runs no analytics and loads nothing from third parties (except the map page, below): no
 web fonts, no CDNs, no external images. The only inline script is on `update.html` (allowed by its hash in the
-Content-Security-Policy): the app opens `update.html#v=<version>&c=<versionCode>`, the browser
-does not send the part after `#` to the server, and the script compares it with the published
-version locally. It is hosted on GitHub Pages; GitHub may log visitors' IP addresses for
+Content-Security-Policy): the app opens `update.html#v=<version>&c=<versionCode>&e=<edition>`
+(`e` since v0.5.0: `offline` or `karte`), the browser does not send the part after `#` to the
+server, and the script compares it with the published version locally and offers the download of
+the same edition. It is hosted on GitHub Pages; GitHub may log visitors' IP addresses for
 technical reasons, see the
 [GitHub General Privacy Statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 The German privacy page is [docs/datenschutz.html](docs/datenschutz.html).
+
+**Downloads.** From v0.5.0 the APKs are attached to a GitHub Release per version
+(`github.com/blauewelt/stadtlaerm/releases/download/vX.Y.Z/stadtlaerm.apk` and
+`…/stadtlaerm-karte.apk`), and the website's download links point there. GitHub serves the file
+and, as for the website, sees the requesting IP address; the project sees only GitHub's public
+per-file `download_count`. `docs/download/stadtlaerm.apk` (the Offline-Version) stays on
+stadtlaerm.ch for old links; downloads of it are not counted by anyone.
 
 **The map page is the one exception.** `docs/karte.html` (the shared noise map, see
 [server/DESIGN.md](server/DESIGN.md) §7) loads map tiles from swisstopo
@@ -190,3 +232,26 @@ no inline script). It says so in one sentence above the map, and `datenschutz.ht
 Both hosts necessarily see the visitor's IP address; the page sends no referrer and sets no
 cookies, and the API server keeps no access log. All other pages still load nothing from third
 parties.
+
+## Usage numbers
+
+The project wants to know whether the app is used, without learning anything about anyone. It
+counts in exactly two places, both public, both totals over the whole project:
+
+1. **Downloads**, counted by GitHub: `download_count` per release asset
+   (`scripts/download_stats.py` reads them from GitHub's release API). Downloads, not people; no
+   IP addresses, times or places reach the project.
+2. **Sharing**, from the server's own data: `https://api.stadtlaerm.ch/v1/map/stats.json`
+   ([server/DESIGN.md](server/DESIGN.md) §6.4), rebuilt with the map — how many devices are
+   registered, have set a hectare, ever shared, were active in the last 7/30 days, deleted their
+   data (one counter), how many hectares are on the map, how many device-nights were shared, how
+   many active devices reported which app version at registration, and registrations per ISO week.
+   Counts only: no device ids, no cells or places, no IP addresses (the server stores none, and
+   neither Caddy nor the app server keeps an access log). Nothing new is collected for it; the only
+   number kept just for it is the deletion counter, a single integer.
+
+**Not counted:** anything about the Offline-Version beyond its downloads — it has no internet
+permission and cannot report anything, by design; the Karten-Version with sharing switched off;
+app starts, measurements, crashes or versions of apps that do not share; downloads of
+`docs/download/stadtlaerm.apk`. `scripts/usage_report.py` combines both sources into one short
+text report.
