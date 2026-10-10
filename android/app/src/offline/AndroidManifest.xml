@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OFFLINE edition only («Offline-Version», the default download docs/download/stadtlaerm.apk):
+     no network access at all, like every published version up to 0.4.0. Removes anything a
+     library (e.g. WorkManager) might merge in. src/public/AndroidManifest.xml (INTERNET for
+     «Messwerte teilen») is not part of this variant; the upload is switched off
+     (BuildConfig.UPLOAD_AVAILABLE = false). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+</manifest>

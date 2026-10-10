@@ -63,5 +63,8 @@ class UpdateCheckTest {
     fun updateUrlCarriesVersionInFragment() {
         assertEquals("https://stadtlaerm.ch/update.html#v=0.3.1&c=5", UpdateCheck.updateUrl("0.3.1", 5))
         assertEquals("https://stadtlaerm.ch/update.html#v=0.3.1+x%26y&c=5", UpdateCheck.updateUrl("0.3.1 x&y", 5))
+        assertEquals("https://stadtlaerm.ch/update.html#v=0.5.0&c=11&e=offline", UpdateCheck.updateUrl("0.5.0", 11, "offline"))
+        assertEquals("https://stadtlaerm.ch/update.html#v=0.5.0&c=11&e=karte", UpdateCheck.updateUrl("0.5.0", 11, "karte"))
+        assertEquals("https://stadtlaerm.ch/update.html#v=0.5.0&c=11&e=a%26b", UpdateCheck.updateUrl("0.5.0", 11, "a&b"))
     }
 }

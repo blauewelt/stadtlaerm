@@ -25,9 +25,15 @@ object UpdateCheck {
 
     private val displayDate: DateTimeFormatter = DateTimeFormatter.ofPattern("d.M.yyyy")
 
-    /** `https://stadtlaerm.ch/update.html#v=<versionName>&c=<versionCode>`. */
-    fun updateUrl(versionName: String, versionCode: Int): String =
-        "$PAGE#v=${URLEncoder.encode(versionName, "UTF-8")}&c=$versionCode"
+    /**
+     * `https://stadtlaerm.ch/update.html#v=<versionName>&c=<versionCode>&e=<edition>`. The page
+     * offers the download of the same edition ([ch.stadtlaerm.app.edition.EditionInfo]: "offline",
+     * "karte"); it ignores any other value (Labor), and without `e` (apps up to 0.4.0) it offers
+     * the Offline-Version.
+     */
+    fun updateUrl(versionName: String, versionCode: Int, edition: String? = null): String =
+        "$PAGE#v=${URLEncoder.encode(versionName, "UTF-8")}&c=$versionCode" +
+            (edition?.let { "&e=${URLEncoder.encode(it, "UTF-8")}" } ?: "")
 
     /** Parses the ISO date from BuildConfig.BUILD_DATE; null if it is malformed. */
     fun parseBuildDate(iso: String?): LocalDate? =

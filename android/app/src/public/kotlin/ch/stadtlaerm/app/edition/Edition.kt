@@ -8,8 +8,10 @@ import ch.stadtlaerm.app.data.EventEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
-// The PUBLIC edition. This source set (app/src/public/) and app/src/main/ contain no code that
-// writes audio; the Labor edition's recorder exists only in app/src/labor/. See PRIVACY.md.
+// The PUBLIC editions: compiled into the Karten-Version (flavour `public`) AND the Offline-Version
+// (flavour `offline`, which adds this directory as a source dir in app/build.gradle.kts). This
+// source set (app/src/public/kotlin) and app/src/main/ contain no code that writes audio; the Labor
+// edition's recorder exists only in app/src/labor/. See PRIVACY.md.
 
 /** Public: there is no audio recorder, the measurement service always gets [NoAudioTap]. */
 object AudioTapProvider {

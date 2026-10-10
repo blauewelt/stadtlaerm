@@ -146,6 +146,26 @@ class UploadModule(
         )
     }
 
+    /**
+     * The Offline-Version (BuildConfig.EDITION = "offline", no «Messwerte teilen», no INTERNET).
+     * Someone who switches from the Karten-Version by installing the Offline-Version over it keeps
+     * the sharing state and WorkManager's scheduled upload jobs. If sharing was on, it is switched
+     * off here and the jobs are cancelled: the jobs would do nothing in this edition (UploadWorker
+     * returns at once), and a later switch back to the Karten-Version must not send what was
+     * measured in between — [Uploader.enable] starts at "now" again once the person switches
+     * sharing back on. Device id and token are kept, so the Karten-Version can still delete the
+     * data on the server.
+     */
+    fun stopForOfflineEdition() {
+        if (BuildConfig.UPLOAD_AVAILABLE || !store.state.value.enabled) return
+        uploader.disable()
+        runCatching {
+            work.cancelUniqueWork(UploadWorker.WORK_PERIODIC)
+            work.cancelUniqueWork(UploadWorker.WORK_NOW)
+            work.cancelUniqueWork(UploadWorker.WORK_MORE)
+        }
+    }
+
     /** One upload soon (after a measurement stopped, after switching on, after a site change). */
     fun uploadSoon(delaySeconds: Long = 15) {
         if (!BuildConfig.UPLOAD_AVAILABLE || !store.state.value.enabled) return

@@ -7,6 +7,7 @@ import ch.stadtlaerm.app.data.CalibrationRepository
 import ch.stadtlaerm.app.data.MeasurementRepository
 import ch.stadtlaerm.app.data.Recalibrator
 import ch.stadtlaerm.app.data.SettingsStore
+import ch.stadtlaerm.app.edition.EditionInfo
 import ch.stadtlaerm.app.service.LiveState
 import ch.stadtlaerm.app.update.UpdateReminderStore
 import ch.stadtlaerm.app.upload.UploadModule
@@ -26,10 +27,13 @@ class StadtlaermApp : Application() {
         container = AppContainer(this)
         // «Messwerte teilen»: keeps the upload schedule in line with the setting and uploads after
         // a measurement stops. Does nothing (no network) while sharing is off, and nothing at all
-        // in the Labor build.
+        // in the Offline and Labor builds.
         // Started off the main thread (the token is read through the Android Keystore).
         if (BuildConfig.UPLOAD_AVAILABLE) {
             container.appScope.launch { container.upload.start(container.appScope, container.live, container.recalibrator) }
+        } else if (BuildConfig.EDITION == EditionInfo.OFFLINE) {
+            // Installed over the Karten-Version with sharing on: switch it off, cancel the jobs.
+            container.appScope.launch { container.upload.stopForOfflineEdition() }
         }
     }
 }

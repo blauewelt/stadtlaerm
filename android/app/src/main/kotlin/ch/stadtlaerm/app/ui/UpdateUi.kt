@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.stadtlaerm.app.BuildConfig
 import ch.stadtlaerm.app.container
+import ch.stadtlaerm.app.edition.EditionInfo
 import ch.stadtlaerm.app.update.UpdateCheck
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -38,7 +39,7 @@ val LocalSnackbarHost = staticCompositionLocalOf { SnackbarHostState() }
  * Returns false if no app can open the link.
  */
 fun openUpdatePage(context: Context): Boolean {
-    val url = UpdateCheck.updateUrl(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
+    val url = UpdateCheck.updateUrl(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE, BuildConfig.EDITION)
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE)
     // No resolveActivity() pre-check: on Android 11+ it needs a <queries> manifest entry and
     // returns null without one. Starting the activity and catching the failure is equivalent.
@@ -107,6 +108,9 @@ fun AppVersionCard() {
             "Stadtlärm ${BuildConfig.VERSION_NAME} (Build vom ${UpdateCheck.displayBuildDate(BuildConfig.BUILD_DATE)})",
             style = MaterialTheme.typography.bodyMedium,
         )
+        // Which edition is installed, and how to switch (install the other APK over this one).
+        Text(EditionInfo.summary(BuildConfig.EDITION), style = MaterialTheme.typography.bodyMedium)
+        EditionInfo.switchHint(BuildConfig.EDITION)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         OutlinedButton(onClick = open) { Text("Nach Update suchen") }
         Text(
             "Öffnet stadtlaerm.ch im Browser. Die App selbst fragt keinen Server nach Updates.",
