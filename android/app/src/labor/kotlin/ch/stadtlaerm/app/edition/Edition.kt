@@ -83,6 +83,29 @@ import java.time.format.DateTimeFormatter
 
 private val LaborRed = Color(0xFFB3261E)
 
+/** What differs between the editions apart from audio and clips. Labor: no upload, no network. */
+object Edition {
+    /** Whether this APK contains «Messwerte teilen». */
+    const val uploadAvailable: Boolean = false
+
+    /** Shown after the version in Einstellungen → App-Version; null keeps the plain line (Labor). */
+    val versionLabel: String? = null
+
+    /** Called once from Application.onCreate. Labor: nothing to start. */
+    fun start(@Suppress("UNUSED_PARAMETER") app: android.app.Application, @Suppress("UNUSED_PARAMETER") container: ch.stadtlaerm.app.AppContainer) {}
+
+    /** Einstellungen, where «Messwerte teilen» is in «mit Lärmkarte». Labor: nothing (as before). */
+    @Composable
+    fun ShareSettingsEntry(@Suppress("UNUSED_PARAMETER") onOpen: () -> Unit) {}
+
+    /** The «Messwerte teilen» screen; null: this edition has none. */
+    val sharingPage: (@Composable (onBack: () -> Unit, modifier: Modifier) -> Unit)? = null
+
+    /** The network line(s) in «Über Stadtlärm & Datenschutz», each ending with a newline. */
+    const val networkPrivacyLines: String =
+        "• Diese Version hat keine Internet-Berechtigung. Daten verlassen das Telefon nur, wenn du sie selbst exportierst und teilst.\n"
+}
+
 /** Labor: the recorder if «Audio während der Messung aufzeichnen» is on, else nothing. */
 object AudioTapProvider {
     fun create(context: Context): AudioTap {

@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  *
  *     cd server && DB_PATH=/tmp/s.sqlite MAP_DIR=/tmp/map BACKGROUND_JOBS=0 HOST=127.0.0.1 PORT=18765 \
  *         .venv/bin/python -m stadtlaerm_server serve
- *     STADTLAERM_TEST_SERVER=http://127.0.0.1:18765 ./gradlew :app:testPublicDebugUnitTest --tests '*RealServerTest*'
+ *     STADTLAERM_TEST_SERVER=http://127.0.0.1:18765 ./gradlew :app:testKarteDebugUnitTest --tests '*RealServerTest*'
  *
  * Skipped unless STADTLAERM_TEST_SERVER is set (only a loopback URL is accepted by UploadClient
  * besides https). Checks that the server's schema validation accepts exactly what the app sends.

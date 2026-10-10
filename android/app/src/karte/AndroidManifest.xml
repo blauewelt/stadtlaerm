@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- PUBLIC edition only. Network access for the opt-in upload «Messwerte teilen» (server/DESIGN.md
+<!-- «MIT LÄRMKARTE» edition (flavour karte) only. Network access for the opt-in upload «Messwerte teilen» (server/DESIGN.md
      §2, §4; PRIVACY.md). Used by exactly one class, upload/UploadClient.kt, for exactly one host
      (BuildConfig.STADTLAERM_API, https://api.stadtlaerm.ch), and only after the person switched
      sharing on. ACCESS_NETWORK_STATE: Android requires it for background jobs that wait for a

@@ -45,6 +45,7 @@ import ch.stadtlaerm.app.container
 import ch.stadtlaerm.app.data.AppSettings
 import ch.stadtlaerm.app.data.CalibrationRepository
 import ch.stadtlaerm.app.data.Recalibrator
+import ch.stadtlaerm.app.edition.Edition
 import ch.stadtlaerm.app.edition.EditionUi
 import ch.stadtlaerm.dsp.calibration.EventFloor
 import ch.stadtlaerm.dsp.calibration.Recalibration
@@ -170,8 +171,9 @@ fun DataScreen(modifier: Modifier = Modifier) {
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     var showShare by rememberSaveable { mutableStateOf(false) }
-    if (showShare && BuildConfig.UPLOAD_AVAILABLE) {
-        ShareScreen(onBack = { showShare = false }, modifier = modifier)
+    val sharingPage = Edition.sharingPage
+    if (showShare && sharingPage != null) {
+        sharingPage({ showShare = false }, modifier)
         return
     }
     val context = LocalContext.current
@@ -285,7 +287,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
             if (live.running && live.effects.isNotEmpty()) StatRow("Effekte", live.effects.joinToString(", "))
         }
-        if (BuildConfig.UPLOAD_AVAILABLE) ShareSettingsCard(onOpen = { showShare = true })
+        Edition.ShareSettingsEntry(onOpen = { showShare = true })
         EditionUi.SettingsSection()
         AppVersionCard()
         SectionCard("Über Stadtlärm & Datenschutz") {
@@ -293,11 +295,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             Text(
                 "• Audio verlässt nie den Arbeitsspeicher: höchstens ca. 1 s wird für die Erkennung gepuffert, nichts wird gespeichert, protokolliert oder gesendet.\n" +
                     "• Gespeichert werden nur Kennwerte: Pegel, Statistik, Kategorie-Anteile, Ereignisse.\n" +
-                    (if (BuildConfig.UPLOAD_AVAILABLE)
-                        "• Internet nutzt die App nur für «Messwerte teilen» (aus, bis du es einschaltest): Kennwerte und die Hektare an api.stadtlaerm.ch, sonst an keinen Server.\n" +
-                            "• Sonst verlassen Daten das Telefon nur, wenn du sie selbst exportierst und teilst.\n"
-                    else
-                        "• Diese Version hat keine Internet-Berechtigung. Daten verlassen das Telefon nur, wenn du sie selbst exportierst und teilst.\n") +
+                    Edition.networkPrivacyLines +
                     "• Pegel sind ohne Kalibrierung nur Richtwerte (Toleranz typ. ±5 dB oder mehr).\n" +
                     "• Erkennung: YAMNet (Google, Apache-2.0), AudioSet-Klassen. Es gibt keine eigene Tram-Klasse.",
                 style = MaterialTheme.typography.bodySmall,

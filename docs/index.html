@@ -17,8 +17,12 @@
   <h1>Stadtlärm</h1>
   <p class="claim">Lärm messen, wo er stört.</p>
   <p class="lead">Ein offenes Messnetz für Strassenlärm, von Anwohnerinnen und Anwohnern für Anwohnerinnen und Anwohner, beginnend in Zürich.</p>
-  <a class="button" href="download/stadtlaerm.apk" download type="application/vnd.android.package-archive">App herunterladen (Android, Testversion)</a>
-  <p class="button-note">Version 0.4.0, 18,6 MB, für Android 8 oder neuer. <a href="#installation">So wird sie installiert.</a></p>
+  <p class="lead">Die Android-App gibt es in zwei Ausgaben:</p>
+  <a class="button" href="download/stadtlaerm-offline.apk" download type="application/vnd.android.package-archive">Stadtlärm offline herunterladen</a>
+  <p class="button-note"><strong>Stadtlärm offline</strong> – misst und behält alles auf dem Telefon. Keine Internet-Berechtigung. Version 0.4.0, 18,4&nbsp;MB.</p>
+  <a class="button" href="download/stadtlaerm-karte.apk" download type="application/vnd.android.package-archive">Stadtlärm mit Lärmkarte herunterladen</a>
+  <p class="button-note"><strong>Stadtlärm mit Lärmkarte</strong> – zusätzlich freiwilliges «Messwerte teilen» für die gemeinsame Karte (ausgeschaltet, bis Sie es einschalten). Version 0.4.0, 18,6&nbsp;MB.</p>
+  <p class="button-note">Beide Testversionen laufen auf Android 8 oder neuer. <a href="#installation">So wird die App installiert.</a></p>
 
   <figure class="night">
     <picture>
@@ -44,14 +48,14 @@
 
 <section id="karte">
   <h2>Lärmkarte</h2>
-  <p>Die gemeinsame Karte zeigt pro Hektare (100&nbsp;×&nbsp;100&nbsp;m) den mittleren Pegel der Nacht, wie stark er schwankt und wie viele laute Töffs und Poser pro Stunde vorbeifahren. Genauer wird kein Standort gezeigt. Sie wird aus der App gespeist: Seit Version 0.4.0 können Sie unter «Einstellungen → Messwerte teilen» freiwillig mitmachen. Das Teilen ist ausgeschaltet, bis Sie es selbst einschalten.</p>
+  <p>Die gemeinsame Karte zeigt pro Hektare (100&nbsp;×&nbsp;100&nbsp;m) den mittleren Pegel der Nacht, wie stark er schwankt und wie viele laute Töffs und Poser pro Stunde vorbeifahren. Genauer wird kein Standort gezeigt. Sie wird aus der App gespeist: In der Ausgabe «Stadtlärm mit Lärmkarte» (ab Version 0.4.0) können Sie unter «Einstellungen → Messwerte teilen» freiwillig mitmachen. Das Teilen ist ausgeschaltet, bis Sie es selbst einschalten.</p>
   <p><a href="karte.html">Zur Lärmkarte</a></p>
   <p class="small">Die Kartenseite ist die einzige Seite, die etwas von anderen Servern lädt: die Kartenbilder von swisstopo und die Messwerte von api.stadtlaerm.ch.</p>
 </section>
 
 <section id="datenschutz">
   <h2>Datenschutz</h2>
-<p>Die App speichert und überträgt kein Audio: Der Ton wird nur im Arbeitsspeicher ausgewertet, auf dem Telefon bleiben nur Pegel und Statistiken. Auch die Erkennung der Lärmquelle läuft auf dem Telefon. Bis Version 0.3.3 hatte die App überhaupt keine Internet-Berechtigung. Seit Version 0.4.0 nutzt sie das Internet für genau eine Sache, das freiwillige «Messwerte teilen» für die Lärmkarte: Es ist ausgeschaltet, bis Sie es selbst einschalten, sendet nur Pegel und Ereignisse mit der Hektare (100&nbsp;×&nbsp;100&nbsp;m), nie Audio und nie den genauen Standort, nur an den Server des Projekts in der Schweiz (api.stadtlaerm.ch), und Sie können die Daten dort jederzeit aus der App löschen. Der Quellcode ist offen, jede und jeder kann ihn auf <a href="https://github.com/blauewelt/stadtlaerm">GitHub</a> nachprüfen, erklärt in <a href="https://github.com/blauewelt/stadtlaerm/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
+<p>Die App speichert und überträgt kein Audio: Der Ton wird nur im Arbeitsspeicher ausgewertet, auf dem Telefon bleiben nur Pegel und Statistiken. Auch die Erkennung der Lärmquelle läuft auf dem Telefon. Die Ausgabe «Stadtlärm offline» hat überhaupt keine Internet-Berechtigung, wie alle Versionen bis 0.3.3; das lässt sich an der heruntergeladenen Datei selbst nachprüfen. Die Ausgabe «Stadtlärm mit Lärmkarte» nutzt das Internet für genau eine Sache, das freiwillige «Messwerte teilen» für die Lärmkarte: Es ist ausgeschaltet, bis Sie es selbst einschalten, sendet nur Pegel und Ereignisse mit der Hektare (100&nbsp;×&nbsp;100&nbsp;m), nie Audio und nie den genauen Standort, nur an den Server des Projekts in der Schweiz (api.stadtlaerm.ch), und Sie können die Daten dort jederzeit aus der App löschen. Der Quellcode ist offen, jede und jeder kann ihn auf <a href="https://github.com/blauewelt/stadtlaerm">GitHub</a> nachprüfen, erklärt in <a href="https://github.com/blauewelt/stadtlaerm/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
   <p>Auch diese Website hält sich daran: Sie setzt keine Cookies und lädt nichts von Dritten, also keine Schriften, keine Statistikdienste und keine fremden Bilder. Einzige Ausnahme ist die <a href="karte.html">Lärmkarte</a>, die die Kartenbilder von swisstopo lädt. Mehr dazu in der <a href="datenschutz.html">Datenschutzerklärung</a>.</p>
 </section>
 
@@ -59,7 +63,7 @@
   <h2>Installation</h2>
   <p>Die App ist (noch) nicht im Play Store. Sie wird direkt von dieser Seite installiert:</p>
   <ol class="steps">
-    <li><a href="download/stadtlaerm.apk" download type="application/vnd.android.package-archive">App herunterladen</a>.</li>
+    <li>Eine der beiden Ausgaben herunterladen: <a href="download/stadtlaerm-offline.apk" download type="application/vnd.android.package-archive">Stadtlärm offline</a> oder <a href="download/stadtlaerm-karte.apk" download type="application/vnd.android.package-archive">Stadtlärm mit Lärmkarte</a>.</li>
     <li>Die heruntergeladene Datei in der App «Dateien» öffnen (Ordner «Downloads»). Der Download-Dialog des Browsers verweigert das Öffnen oft.</li>
     <li>Falls Android fragt: für diese App «Unbekannte Apps installieren» erlauben, dann zurück und installieren.</li>
     <li>Falls Google Play Protect warnt: «Weitere Details» antippen, dann «Trotzdem installieren».</li>
@@ -69,13 +73,24 @@
 
   <div class="note">
     <p>Ab Version 0.2.0 installiert sich die neue Version über die alte und behält die Messwerte. Nur wer noch eine Version 0.1.x hat, muss sie zuerst deinstallieren, weil diese anders signiert war; vorher unter «Daten» die Messwerte als CSV exportieren, sonst gehen sie verloren.</p>
+    <p>Die beiden Ausgaben installieren sich in beide Richtungen übereinander und behalten die Messwerte; wer von «mit Lärmkarte» zu «offline» wechselt, sollte vorher in der App unter «Einstellungen → Messwerte teilen» auf «Meine Daten auf dem Server löschen» tippen, weil die Offline-Ausgabe das nicht kann.</p>
   </div>
 
   <dl class="facts">
+    <dt>Ausgabe</dt><dd>Stadtlärm offline (<code>stadtlaerm-offline.apk</code>)</dd>
+    <dt>Version</dt><dd>0.4.0 (Testversion)</dd>
+    <dt>Grösse</dt><dd>18,4 MB</dd>
+    <dt>Android</dt><dd>8.0 oder neuer</dd>
+    <dt>Internet</dt><dd>keine Berechtigung</dd>
+    <dt>SHA-256</dt><dd><code class="hash">746688ad3efd4055890f8bd2a8bfd5a4a759a7b0728cd755b43c4f2dfe7e5ef0</code></dd>
+  </dl>
+  <dl class="facts">
+    <dt>Ausgabe</dt><dd>Stadtlärm mit Lärmkarte (<code>stadtlaerm-karte.apk</code>)</dd>
     <dt>Version</dt><dd>0.4.0 (Testversion)</dd>
     <dt>Grösse</dt><dd>18,6 MB</dd>
     <dt>Android</dt><dd>8.0 oder neuer</dd>
-    <dt>SHA-256</dt><dd><code class="hash">f8957c0953877530a7ee653159cac1033adff75025badb4980d2173daa2ee70c</code></dd>
+    <dt>Internet</dt><dd>nur für «Messwerte teilen», ausgeschaltet bis Sie es einschalten</dd>
+    <dt>SHA-256</dt><dd><code class="hash">d6f56128f3eee863280f4849bbca6c670c8e5efbcb307fc4f68352eb58646078</code></dd>
   </dl>
   <p class="small">Die Prüfsumme zeigt, ob die Datei unverändert angekommen ist. Wie man sie und die Signatur prüft, steht in der <a href="https://github.com/blauewelt/stadtlaerm/blob/main/android/README.md#install-sideload">Anleitung auf GitHub</a> (Englisch).</p>
 </section>
@@ -94,7 +109,7 @@
 <section id="stand">
   <h2>Stand des Projekts</h2>
   <ul class="status">
-    <li><strong>App für Android</strong>Testversion 0.4.0. Sie ist noch nicht auf vielen Telefonen erprobt; Rückmeldungen helfen.</li>
+    <li><strong>App für Android</strong>Testversion 0.4.0, in zwei Ausgaben: offline und mit Lärmkarte. Sie ist noch nicht auf vielen Telefonen erprobt; Rückmeldungen helfen.</li>
     <li><strong>Sensor fürs Fensterbrett</strong>In Entwicklung: ein kleines Messgerät mit Solarzelle, das fest am Fenster misst, mit derselben Messmethode und Kalibrierung wie die App.</li>
     <li><strong>Stadt Zürich</strong>Austausch mit der Stadt Zürich (Umwelt- und Gesundheitsschutz) ist aufgenommen.</li>
   </ul>

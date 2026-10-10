@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-6uKJUZaO5JBshuwm2HUhXSxjcYys4RS5ARNaJPTjvuo='; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-iySsjTY1H9zxGuDQD6SOmt0LIJix5BcOIMPVBWd7wik='; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex">
@@ -24,10 +24,23 @@
 
 <section>
   <h2 id="status">Aktuelle Version: 0.4.0</h2>
-  <p id="download"><a class="button" href="download/stadtlaerm.apk" download type="application/vnd.android.package-archive">App herunterladen</a></p>
+  <!-- Without #e= (apps before 0.4.0, or no script) both editions are offered, offline first.
+       With #e=offline or #e=karte the script shows that edition's button and the other as a text link. -->
+  <div id="download">
+    <div id="dl-offline">
+      <p><a class="button" href="download/stadtlaerm-offline.apk" download type="application/vnd.android.package-archive">Stadtlärm offline herunterladen</a></p>
+      <p class="button-note">Misst und behält alles auf dem Telefon. Keine Internet-Berechtigung.</p>
+    </div>
+    <div id="dl-karte">
+      <p><a class="button" href="download/stadtlaerm-karte.apk" download type="application/vnd.android.package-archive">Stadtlärm mit Lärmkarte herunterladen</a></p>
+      <p class="button-note">Zusätzlich freiwilliges «Messwerte teilen» für die gemeinsame Karte (ausgeschaltet, bis Sie es einschalten).</p>
+    </div>
+    <p class="small" id="alt-offline" hidden>Lieber ganz ohne Internet? <a href="download/stadtlaerm-offline.apk" download type="application/vnd.android.package-archive">Stadtlärm offline herunterladen</a>. Vorher in der App unter «Einstellungen → Messwerte teilen» auf «Meine Daten auf dem Server löschen» tippen, denn die Offline-Ausgabe kann das nicht.</p>
+    <p class="small" id="alt-karte" hidden>Bei der Lärmkarte mitmachen? <a href="download/stadtlaerm-karte.apk" download type="application/vnd.android.package-archive">Stadtlärm mit Lärmkarte herunterladen</a>. Sie installiert sich über diese Ausgabe und behält die Messwerte.</p>
+  </div>
   <ol class="steps" id="hints" hidden>
     <li>Die heruntergeladene Datei in der App «Dateien» öffnen (Ordner «Downloads»). Der Download-Dialog des Browsers verweigert das Öffnen oft.</li>
-    <li>Die neue Version wird über die alte installiert. Die Messwerte bleiben erhalten.</li>
+    <li>Die neue Version wird über die alte installiert, auch wenn Sie die Ausgabe wechseln. Die Messwerte bleiben erhalten.</li>
   </ol>
   <p class="small">Die installierte Version wird nur im Browser verglichen; der Teil nach dem # wird nicht an den Server gesendet.</p>
   <p class="small">Mehr zur Installation und die Prüfsumme der Datei stehen auf der <a href="./#installation">Startseite</a>.</p>
@@ -53,6 +66,10 @@
   var status = document.getElementById("status");
   var download = document.getElementById("download");
   var hints = document.getElementById("hints");
+  var dlOffline = document.getElementById("dl-offline");
+  var dlKarte = document.getElementById("dl-karte");
+  var altOffline = document.getElementById("alt-offline");
+  var altKarte = document.getElementById("alt-karte");
 
   function compareVersions(a, b) {
     var x = a.split(/[.+-]/), y = b.split(/[.+-]/);
@@ -69,6 +86,14 @@
     var c = params.get("c");
     if (v !== null && !/^[0-9A-Za-z.+ -]{1,32}$/.test(v)) v = null;
     if (c !== null && !/^[0-9]{1,9}$/.test(c)) c = null;
+    // Edition of the installed app (0.4.0+): its own download first, the other as a text link.
+    // Anything else (older app, Labor build, no fragment): both, offline first.
+    var e = params.get("e");
+    if (e !== "offline" && e !== "karte") e = null;
+    dlOffline.hidden = e === "karte";
+    dlKarte.hidden = e === "offline";
+    altOffline.hidden = e !== "karte";
+    altKarte.hidden = e !== "offline";
 
     var newer;
     if (c !== null) newer = parseInt(c, 10) < latestCode;

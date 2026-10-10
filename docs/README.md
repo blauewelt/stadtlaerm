@@ -13,7 +13,7 @@ spelling, system fonts, no third-party requests — except on the map page, whic
 | `map/model.js` | Pure helpers of the map: wording, colour scales, the card's night-chart model |
 | `map/karte.js`, `map/karte.css` | The map page itself (Leaflet, legend, card, date control) |
 | `vendor/leaflet/` | Leaflet 1.9.4, copied unchanged from the npm package (`node_modules/leaflet/dist`) |
-| `img/`, `download/` | Screenshots; the signed APK |
+| `img/`, `download/` | Screenshots; the two signed APKs (`stadtlaerm-offline.apk`, `stadtlaerm-karte.apk`) |
 
 ## The map page
 

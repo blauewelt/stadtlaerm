@@ -10,9 +10,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- Network: INTERNET and ACCESS_NETWORK_STATE are added only by the public flavour
-         (src/public/AndroidManifest.xml) for the opt-in upload «Messwerte teilen»; the Labor
-         flavour removes them (src/labor/AndroidManifest.xml). Nothing else a library might merge
+    <!-- Network: INTERNET and ACCESS_NETWORK_STATE are added only by the «mit Lärmkarte» flavour
+         (src/karte/AndroidManifest.xml) for the opt-in upload «Messwerte teilen»; the offline and
+         Labor flavours remove them (src/offline/, src/labor/AndroidManifest.xml). Nothing else a library might merge
          in is allowed: no Wi-Fi state (network names), no start at boot (WorkManager would add it
          to reschedule jobs after a reboot; the next app start does that instead). -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />

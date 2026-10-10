@@ -39,17 +39,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import ch.stadtlaerm.app.container
 import ch.stadtlaerm.app.upload.CellInput
 import ch.stadtlaerm.app.upload.SiteSettings
 import ch.stadtlaerm.app.upload.UploadSnapshot
 import ch.stadtlaerm.app.upload.Uploader
+import ch.stadtlaerm.app.upload.uploadModule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// «Einstellungen → Messwerte teilen» (server/DESIGN.md §2, §9). Off by default; switching on needs
-// the explanation (once) and a hectare. Everything network goes through upload/UploadClient.kt.
+// «Einstellungen → Messwerte teilen» (server/DESIGN.md §2, §9). «mit Lärmkarte» edition only
+// (src/karte/). Off by default; switching on needs the explanation (once) and a hectare.
+// Everything network goes through upload/UploadClient.kt.
 
 /** Short German labels of the placement values (server/DESIGN.md §4.2). */
 fun placementLabel(p: String): String = when (p) {
@@ -70,8 +71,7 @@ fun shareSummary(s: UploadSnapshot): String = when {
 /** The card in Einstellungen that opens the screen. */
 @Composable
 fun ShareSettingsCard(onOpen: () -> Unit) {
-    val c = LocalContext.current.container
-    val s by c.upload.store.state.collectAsStateWithLifecycle()
+    val s by LocalContext.current.uploadModule.store.state.collectAsStateWithLifecycle()
     SectionCard("Messwerte teilen") {
         Text(
             "Freiwillig: deine Messwerte (nie Audio) für die gemeinsame Lärmkarte an den Server des Projekts in der Schweiz senden.",
@@ -87,8 +87,7 @@ fun ShareSettingsCard(onOpen: () -> Unit) {
 @Composable
 fun ShareScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     BackHandler(onBack = onBack)
-    val c = LocalContext.current.container
-    val module = c.upload
+    val module = LocalContext.current.uploadModule
     val s by module.store.state.collectAsStateWithLifecycle()
     val pending by remember { module.pendingMinutes }.collectAsStateWithLifecycle(0)
     val scope = rememberCoroutineScope()

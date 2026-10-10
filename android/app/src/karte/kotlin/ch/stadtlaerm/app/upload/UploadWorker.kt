@@ -43,7 +43,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
     override suspend fun doWork(): Result {
         if (!BuildConfig.UPLOAD_AVAILABLE) return Result.success()
-        val module = applicationContext.container.upload
+        val module = applicationContext.uploadModule
         return when (val o = module.uploader.run()) {
             is Uploader.Outcome.Done -> {
                 // More than one run's request budget waiting (e.g. after a long time offline).
@@ -92,7 +92,22 @@ private class RoomUploadSource(
     }
 }
 
-/** Everything of the upload, wired once per process (AppContainer.upload). */
+/**
+ * The process-wide [UploadModule], created on first use (like the members of AppContainer). Lives
+ * in this flavour's source set, so the offline and Labor APKs contain none of the upload.
+ */
+val Context.uploadModule: UploadModule get() = UploadModuleHolder.get(this)
+
+private object UploadModuleHolder {
+    @Volatile private var instance: UploadModule? = null
+
+    fun get(context: Context): UploadModule = instance ?: synchronized(this) {
+        instance ?: context.container.let { c -> UploadModule(context.applicationContext, c.db, c.calibrations) }
+            .also { instance = it }
+    }
+}
+
+/** Everything of the upload, wired once per process ([uploadModule]). */
 class UploadModule(
     context: Context,
     db: AppDatabase,

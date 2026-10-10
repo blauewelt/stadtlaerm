@@ -3,23 +3,42 @@
 Stadtlärm measures noise levels. It never records audio. This is the core promise of the
 project, and this page explains how the code keeps it, so anyone can check.
 
-Everything on this page is about the **public app** (`ch.stadtlaerm.app`, the APK on
-stadtlaerm.ch). Since v0.3.3 the repository can also build a separate diagnostics app that *can*
-record audio; it is a different app, is never published, and the public app contains none of its
-code. See [Labor-Build](#labor-build) below.
+Everything on this page is about the **published app** (`ch.stadtlaerm.app`, the APKs on
+stadtlaerm.ch). Since v0.4.0 it is published in **two editions**, built from the same source:
+
+| | **Stadtlärm offline** | **Stadtlärm mit Lärmkarte** |
+|---|---|---|
+| File on stadtlaerm.ch | `download/stadtlaerm-offline.apk` | `download/stadtlaerm-karte.apk` |
+| Gradle flavour | `offline` | `karte` |
+| Network | **no `INTERNET` permission**, no network code — exactly what v0.3.3 promised | `INTERNET` for exactly one thing, the opt-in «Messwerte teilen» (off until you switch it on), one class, one host |
+| Upload code | not in the APK (`app/src/karte/` is not compiled into it) | `app/src/karte/kotlin/ch/stadtlaerm/app/upload/` |
+
+Both have the same app id, version code and signing key, so either installs over the other in both
+directions and keeps the measurements. «No `INTERNET` permission» is a promise anyone can check on
+the downloaded file (see [How to verify](#how-to-verify)); «off until you switch it on» has to be
+taken from the source. Before switching from «mit Lärmkarte» to «offline», delete your server data
+in the app («Meine Daten auf dem Server löschen»): the offline edition cannot.
+
+Since v0.3.3 the repository can also build a separate diagnostics app that *can* record audio; it
+is a different app, is never published, and neither published edition contains any of its code.
+See [Labor-Build](#labor-build) below.
 
 ## Guarantees (app, since v0.1)
 
 1. **Raw audio never touches disk.** No code path writes samples to a file, a database, the
    cache, shared preferences or the clipboard.
-2. **Raw audio never leaves the app process.** There is no code that sends audio anywhere. Up to
-   v0.3.x the manifest had no `INTERNET` permission at all. **Since v0.4.0** the public app has
-   `INTERNET` for exactly one purpose: the opt-in upload «Messwerte teilen» (see
-   [«Messwerte teilen»](#messwerte-teilen-opt-in-upload-since-v040) below), which is **off until you
-   switch it on**, sends only the minute and event *numbers* listed there, to one host
-   (`api.stadtlaerm.ch`), through one class (`upload/UploadClient.kt`). Otherwise data leaves the
-   phone only when *you* export a CSV/JSON file and share it through the Android share menu.
-   «Nach Update suchen» (since v0.3.1) only hands a link to the browser; see "The website" below.
+2. **Raw audio never leaves the app process.**
+   - **Stadtlärm offline** (and every version up to v0.3.x): The manifest has **no `INTERNET`
+     permission** (it is explicitly removed with `tools:node="remove"`, so a library cannot add it
+     back), and there is no network code. Data leaves the phone only when *you* export a CSV/JSON
+     file and share it through the Android share menu. «Nach Update suchen» (since v0.3.1) only
+     hands a link to the browser; see "The website" below.
+   - **Stadtlärm mit Lärmkarte** (since v0.4.0): there is no code that sends audio anywhere. The
+     app has `INTERNET` for exactly one purpose: the opt-in upload «Messwerte teilen» (see
+     [«Messwerte teilen»](#messwerte-teilen-opt-in-upload-since-v040) below), which is **off until
+     you switch it on**, sends only the minute and event *numbers* listed there, to one host
+     (`api.stadtlaerm.ch`), through one class (`upload/UploadClient.kt`). Otherwise the same as the
+     offline edition: data leaves the phone only when *you* export and share it.
 3. **Raw audio is never logged.** The only log line in the audio path reports an exception
    class name when the microphone cannot be opened.
 4. **Raw audio is held only briefly, in memory, in small fixed-size buffers.** The largest is
@@ -31,7 +50,8 @@ code. See [Labor-Build](#labor-build) below.
    can be turned back into audio.
 6. **No analytics, no crash reporting, no cloud backup.** `android:allowBackup="false"`, and
    the data-extraction rules exclude everything from cloud backup and device transfer. No
-   third-party SDK talks to the network: the upload uses Android's own `HttpURLConnection`.
+   third-party SDK talks to the network: the upload («mit Lärmkarte» only) uses Android's own
+   `HttpURLConnection`.
 
 ## Where audio is handled in the code
 
@@ -60,19 +80,38 @@ accordingly before you share them.
 
 ## How to verify
 
-- `aapt2 dump permissions stadtlaerm.apk` lists exactly: `RECORD_AUDIO`,
-  `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `WAKE_LOCK`
-  (plus AndroidX's internal `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`). Up to v0.3.x: no
-  `INTERNET`. Since v0.4.0 additionally `INTERNET` and `ACCESS_NETWORK_STATE`, both only for
-  «Messwerte teilen» (below); still no location, Wi-Fi-state, boot or storage permission.
-- Search the source of the public app: `grep -rn "FileOutputStream\|openFileOutput\|Socket\|HttpURLConnection\|openConnection\|URL(" android/app/src/main android/app/src/public android/dsp/src/main`
-  finds network code in exactly one file, `android/app/src/main/kotlin/ch/stadtlaerm/app/upload/UploadClient.kt`
-  (the upload), and nothing in the audio path (`android/app/src/labor/` is the separate Labor build, see below). The only file writes are the CSV/JSON exports in
-  `android/app/.../data/Repositories.kt` and `android/app/.../ui/CalibrationViewModel.kt`, which contain aggregates only.
+- Permissions, with the Android SDK's build-tools (`aapt2` or the older `aapt`):
+  ```sh
+  aapt2 dump badging stadtlaerm-offline.apk | grep uses-permission
+  aapt2 dump badging stadtlaerm-karte.apk   | grep uses-permission
+  ```
+  **Stadtlärm offline** lists exactly: `RECORD_AUDIO`, `FOREGROUND_SERVICE`,
+  `FOREGROUND_SERVICE_MICROPHONE`, `POST_NOTIFICATIONS`, `WAKE_LOCK` (plus AndroidX's internal
+  `ch.stadtlaerm.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`) — the same set as v0.3.3, **no
+  `INTERNET`, no `ACCESS_NETWORK_STATE`**. **Stadtlärm mit Lärmkarte** lists the same plus
+  `INTERNET` and `ACCESS_NETWORK_STATE`, both only for «Messwerte teilen» (below). Neither has a
+  location, Wi-Fi-state, boot or storage permission.
+- Upload code in the APK (the dex files are compressed inside the APK, so they are unpacked first;
+  a plain `unzip -l` only lists `classes.dex`, not the classes in it):
+  ```sh
+  unzip -p stadtlaerm-offline.apk 'classes*.dex' | grep -a -c 'ch/stadtlaerm/app/upload'   # 0
+  unzip -p stadtlaerm-karte.apk   'classes*.dex' | grep -a -c 'ch/stadtlaerm/app/upload'   # > 0
+  unzip -p stadtlaerm-offline.apk | grep -a -c 'api\.stadtlaerm\.ch'                      # 0
+  ```
+  For v0.4.0 this was checked on the signed APKs on stadtlaerm.ch: 0 / 17 / 0 (the karte APK
+  contains 89 distinct classes under `ch/stadtlaerm/app/upload/`).
+- Search the source: `grep -rn "FileOutputStream\|openFileOutput\|Socket\|HttpURLConnection\|openConnection\|URL(" android/app/src/main android/app/src/offline android/dsp/src/main`
+  finds no network code at all (that is what the offline edition is built from). Adding
+  `android/app/src/karte` finds network code in exactly one file,
+  `android/app/src/karte/kotlin/ch/stadtlaerm/app/upload/UploadClient.kt` (the upload), and
+  nothing in the audio path (`android/app/src/labor/` is the separate Labor build, see below). The
+  only file writes are the CSV/JSON exports in `android/app/.../data/Repositories.kt` and
+  `android/app/.../ui/CalibrationViewModel.kt`, which contain aggregates only.
 
 ## «Messwerte teilen» (opt-in upload, since v0.4.0)
 
-The shared noise map ([server/DESIGN.md](server/DESIGN.md), its §2 is the privacy contract) is
+This section applies to **Stadtlärm mit Lärmkarte** only; the offline edition contains none of
+this code. The shared noise map ([server/DESIGN.md](server/DESIGN.md), its §2 is the privacy contract) is
 fed by phones whose owners switched on **Einstellungen → Messwerte teilen**. The rules, and where
 the code keeps them:
 
@@ -91,7 +130,7 @@ for «nur über WLAN»); it tells the app whether a connection is up and metered
 `ACCESS_WIFI_STATE` and `RECEIVE_BOOT_COMPLETED` (which WorkManager would add) are removed in the
 manifest.
 
-**How to verify:** the grep above (one network file); `android/app/src/test/.../upload/UploadTest.kt`
+**How to verify:** the grep above (one network file); `android/app/src/testKarte/.../upload/UploadTest.kt`
 checks the exact request bodies against a local fake server (no labels, no originals, no
 coordinates, gzip, bearer token, the fixed User-Agent, nothing sent while off); and on a phone,
 Android's per-app data usage (on a Pixel: *Settings → Apps → Stadtlärm → Mobile data & Wi-Fi*)
@@ -99,50 +138,55 @@ shows the app's traffic, which stays at zero while sharing is off.
 
 ## Labor-Build
 
-Since v0.3.3 the Android app has two product flavours (Gradle dimension `edition`):
+Since v0.3.3 the Android app has product flavours (Gradle dimension `edition`), since v0.4.0
+three: the two published editions `offline` and `karte` (until then one flavour, `public`) and
+`labor`:
 
-| | `public` | `labor` |
+| | `offline` and `karte` | `labor` |
 |---|---|---|
 | App id / name | `ch.stadtlaerm.app`, «Stadtlärm» | `ch.stadtlaerm.labor`, «Stadtlärm Labor» (red icon) |
 | Published | yes: `docs/download/`, linked from stadtlaerm.ch | **never**: not in `docs/`, not linked from the website |
-| Can record audio | no — the code does not exist in this app | yes, only after switching it on, see below |
+| Can record audio | no — the code does not exist in these apps | yes, only after switching it on, see below |
 
 The Labor build exists to debug the event detector and the sound-source classifier with real
 recordings. It is a separate app with its own app id (installed side by side, its own data); it
 is signed with the same key only so that it can be updated.
 
-**How the public app is kept free of recording code.** Android Gradle compiles a variant only
+**How the published editions are kept free of recording code.** Android Gradle compiles a variant only
 from `app/src/main/` plus the source set of its flavour. All code that writes audio — the clip
 assembler, the WAV and AAC writers, the manifest, the Labor UI — lives exclusively in
 `app/src/labor/` (`ch.stadtlaerm.app.labor.*` and the Labor `ch.stadtlaerm.app.edition.*`), so it
-is not compiled into the public APK at all. The shared code only contains:
+is not compiled into the offline or karte APK at all. The shared code only contains:
 
 - `app/src/main/kotlin/ch/stadtlaerm/app/audio/AudioTap.kt`: an interface through which a build
   *could* see the capture blocks and the event lifecycle, and `NoAudioTap`, which does nothing;
-- `app/src/public/kotlin/ch/stadtlaerm/app/edition/Edition.kt`: the public `AudioTapProvider`,
-  which always returns `NoAudioTap`, and empty UI hooks;
+- `app/src/offline/…/edition/Edition.kt` and `app/src/karte/…/edition/Edition.kt`: the
+  published `AudioTapProvider`, which always returns `NoAudioTap`, and empty UI hooks (karte:
+  plus the «Messwerte teilen» hooks);
 - in `MeasurementEngine`, listener hooks that report sample indices of event start/confirmation/
   end, the clock anchor and each classifier result (label names, scores, gain and level — numbers
   only; the default implementations do nothing).
 - in the chart (since v0.3.4), an optional clip reference per event and an optional «Abspielen»
-  callback. The public `EditionClips` provides no references and no callback, so the public chart
+  callback. The published `EditionClips` provides no references and no callback, so their chart
   never shows a play button; the clip index and the player (MediaPlayer) live in `app/src/labor/`.
 
 The Labor build has no network access: its manifest (`app/src/labor/AndroidManifest.xml`) removes
 `INTERNET` and `ACCESS_NETWORK_STATE`, and «Messwerte teilen» does not exist in it
-(`BuildConfig.UPLOAD_AVAILABLE = false`). No storage permission in either build.
+(`BuildConfig.UPLOAD_AVAILABLE = false`, and `app/src/karte/` is not compiled into it). No storage
+permission in any build.
 
-**How to verify** (any public build, e.g. `app/build/outputs/apk/public/release/app-public-release.apk`):
+**How to verify** (any published build, e.g. `app/build/outputs/apk/offline/release/app-offline-release.apk`
+or `…/karte/release/app-karte-release.apk`):
 
 1. Source: `find android/app/src -path '*labor*'` lists the only recording code;
-   `grep -rln "FileOutputStream\|MediaMuxer\|MediaCodec\|RIFF" android/app/src/main android/app/src/public android/dsp/src/main`
+   `grep -rln "FileOutputStream\|MediaMuxer\|MediaCodec\|RIFF" android/app/src/main android/app/src/offline android/app/src/karte android/dsp/src/main`
    finds nothing; the only file writes there are the CSV/JSON exports (`writeText` in
    `Repositories.kt` and `CalibrationViewModel.kt`), which contain aggregates only.
 2. The built APK: list its classes and strings, e.g. with the Android SDK (cmdline-tools,
    build-tools 35)
    ```sh
-   apkanalyzer dex packages app-public-release.apk | grep -c 'ch.stadtlaerm.app.labor'   # 0
-   unzip -o app-public-release.apk 'classes*.dex' -d dex/
+   apkanalyzer dex packages app-offline-release.apk | grep -c 'ch.stadtlaerm.app.labor'   # 0
+   unzip -o app-offline-release.apk 'classes*.dex' -d dex/
    for d in dex/classes*.dex; do dexdump "$d" | grep 'Class descriptor'; done \
      | grep -iE 'labor|recorder|wav|aac|muxer|clipassembler'                              # nothing
    for d in dex/classes*.dex; do strings "$d"; done \
@@ -152,9 +196,11 @@ The Labor build has no network access: its manifest (`app/src/labor/AndroidManif
    SHA-256 `4fad06307d29f4ee088fdc4653acf48a39b29091a85214e7a0ee8d6b72fb0ac9`): `apkanalyzer` 0, `dexdump` lists 13401 classes and none of them
    matches, and no dex string references `MediaMuxer`, `MediaCodec`, `RIFF`/`WAVE`,
    `manifest.jsonl` or the `labor` package. As a control, the same commands on the Labor APK find
-   828 `ch.stadtlaerm.app.labor` entries and 98 matching strings.
-3. `aapt2 dump permissions` lists the permissions of «How to verify» above; for the Labor APK
-   without `INTERNET` and `ACCESS_NETWORK_STATE`.
+   828 `ch.stadtlaerm.app.labor` entries and 98 matching strings. For v0.4.0 both published APKs
+   were checked for the strings `ch/stadtlaerm/app/labor` and `LABOR-VERSION`: none in either
+   (the Labor APK built alongside has both).
+3. `aapt2 dump badging … | grep uses-permission` lists the permissions of «How to verify» above;
+   the Labor APK has the offline edition's set (no `INTERNET`, no `ACCESS_NETWORK_STATE`).
 
 **What the Labor build records** (only after «Einstellungen → Labor → Audio während der Messung
 aufzeichnen» is switched on and confirmed; off by default): event clips (WAV, 16 kHz, 5 s before to
@@ -173,7 +219,8 @@ knows about it.
 [stadtlaerm.ch](https://stadtlaerm.ch) (source in `docs/`) is static HTML and CSS. It sets no
 cookies, runs no analytics and loads nothing from third parties (except the map page, below): no
 web fonts, no CDNs, no external images. The only inline script is on `update.html` (allowed by its hash in the
-Content-Security-Policy): the app opens `update.html#v=<version>&c=<versionCode>`, the browser
+Content-Security-Policy): the app opens `update.html#v=<version>&c=<versionCode>&e=<edition>`
+(`e` since v0.4.0: `offline`, `karte` or `labor`, so the page offers the matching download first), the browser
 does not send the part after `#` to the server, and the script compares it with the published
 version locally. It is hosted on GitHub Pages; GitHub may log visitors' IP addresses for
 technical reasons, see the

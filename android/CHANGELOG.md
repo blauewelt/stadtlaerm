@@ -1,8 +1,30 @@
 # Changelog
 
-## 0.4.0 — 2026-10-09
+## 0.4.0 — 2026-10-09 (two editions since 2026-10-10)
 
-### Public app (`ch.stadtlaerm.app`, version 0.4.0, code 10; published on stadtlaerm.ch)
+### Two editions of the published app (`ch.stadtlaerm.app`, version 0.4.0, code 10)
+
+Since 2026-10-10 the app is published in two editions, same app id, version and signing key, so
+each installs over the other in both directions and keeps the measurements:
+
+- **Stadtlärm offline** (`download/stadtlaerm-offline.apk`, Gradle flavour `offline`): exactly
+  what 0.3.3 promised: no `INTERNET`, no `ACCESS_NETWORK_STATE` (the v0.3.3 permission set), no
+  upload code in the APK (`app/src/karte/` is not compiled into it), no server host string.
+  Einstellungen shows «Stadtlärm 0.4.0 (offline)» and, where «Messwerte teilen» would be, one line
+  pointing to the other edition.
+- **Stadtlärm mit Lärmkarte** (`download/stadtlaerm-karte.apk`, flavour `karte`): everything
+  below, i.e. the opt-in «Messwerte teilen». Einstellungen shows «Stadtlärm 0.4.0 (mit Lärmkarte)».
+
+Why: «no `INTERNET` permission» is a promise anyone can verify with `aapt2 dump badging`; «upload
+off by default» has to be trusted. The 2026-10-09 build (`download/stadtlaerm.apk`, upload
+included) is replaced by these two files; it is the same app as «mit Lärmkarte».
+«Nach Update suchen» now appends `&e=<edition>` to the update page's fragment, so the page offers
+the matching APK first. Code: the upload (`upload/`, `ui/ShareScreen.kt`) moved from `src/main/`
+to `src/karte/`; per-flavour `edition/Edition.kt` objects hook it into the shared code; WorkManager
+and `BuildConfig.STADTLAERM_API` exist only in the karte variant; upload tests moved to
+`src/testKarte/`.
+
+### «mit Lärmkarte»: what 0.4.0 adds to 0.3.3
 
 In short: an opt-in «Messwerte teilen» sends the measured levels to the shared noise map — off by
 default; the `INTERNET` permission is added for exactly this. The location is placed on the phone
@@ -18,10 +40,10 @@ to a 100 m × 100 m hectare square; «Meine Daten auf dem Server löschen» dele
   löschen» and «Neue Kennung». Uploads run 5 min after every full hour and 15 s after a measurement
   stops (WorkManager), in batches of ≤ 1440 minutes / ≤ 2000 events, resume from the last
   acknowledged start, and never resend records the server refused.
-- **Permissions:** the public app now has `INTERNET` and `ACCESS_NETWORK_STATE`, used only by
-  `upload/UploadClient.kt` for one host. `ACCESS_WIFI_STATE` and `RECEIVE_BOOT_COMPLETED` stay
+- **Permissions:** «mit Lärmkarte» has `INTERNET` and `ACCESS_NETWORK_STATE`, used only by
+  `upload/UploadClient.kt` for one host (the offline edition has neither). `ACCESS_WIFI_STATE` and `RECEIVE_BOOT_COMPLETED` stay
   removed; no location permission. PRIVACY.md, the READMEs and the website say so.
-- New dependency: `androidx.work:work-runtime-ktx` 2.9.1 (AndroidX, scheduling only). The network
+- New dependency («mit Lärmkarte» only): `androidx.work:work-runtime-ktx` 2.9.1 (AndroidX, scheduling only). The network
   code uses the platform's `HttpURLConnection`; no third-party SDK.
 - `dsp`: `geo/Lv95.kt`, WGS84 ↔ LV95 and hectare ids, the same formulas as the map's
   `docs/map/lv95.js`, tested against swisstopo's reference points.
@@ -31,7 +53,8 @@ to a 100 m × 100 m hectare square; «Meine Daten auf dem Server löschen» dele
 ### «Stadtlärm Labor» (`ch.stadtlaerm.labor`, `0.4.0-labor`, never published)
 
 - No functional change: no network permission (its manifest removes `INTERNET` and
-  `ACCESS_NETWORK_STATE`), «Messwerte teilen» is not offered.
+  `ACCESS_NETWORK_STATE`), «Messwerte teilen» is not offered; since the two-editions build it
+  contains no upload code and no WorkManager at all. «Nach Update suchen» sends `e=labor`.
 
 ## 0.3.4 — 2026-10-08
 

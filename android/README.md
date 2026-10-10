@@ -6,12 +6,13 @@ detects individual noise events (a motorbike, a shouting group, a tram), tags ea
 likely source using an on-device sound classifier, and summarises every night
 (22:00–06:00, the Swiss night period).
 
-**Privacy by construction:** no audio is ever stored or sent. Up to v0.3.x the app has no internet
-permission at all; from v0.4.0 it uses the internet only for the opt-in upload
-[«Messwerte teilen»](#messwerte-teilen-opt-in-upload-v040) (off until switched on, one host, one
-network class, no third-party SDK). See [PRIVACY.md](../PRIVACY.md). (A separate, unpublished diagnostics app,
-«Stadtlärm Labor», can record audio; the public app contains none of its code. See
-[Labor build](#labor-build).)
+**Privacy by construction:** no audio is ever stored or sent. Since v0.4.0 the app is published
+in **two editions** (see [Editions](#editions)): **Stadtlärm offline** has no internet permission
+at all, like every version up to v0.3.x; **Stadtlärm mit Lärmkarte** uses the internet only for the
+opt-in upload [«Messwerte teilen»](#messwerte-teilen-opt-in-upload-v040) (off until switched on,
+one host, one network class, no third-party SDK). See [PRIVACY.md](../PRIVACY.md). (A separate,
+unpublished diagnostics app, «Stadtlärm Labor», can record audio; neither published edition
+contains any of its code. See [Labor build](#labor-build).)
 
 The UI is German (Swiss spelling); the code and docs are English. License: [Apache-2.0](../LICENSE).
 
@@ -137,12 +138,35 @@ file (`yamnet_labels.txt`, extracted from the model's own metadata).
 The classifier sits behind the `SoundClassifier` interface (`dsp/.../classify/SoundClassifier.kt`),
 so a better model can be swapped in without touching the measurement code.
 
+## Editions
+
+| | **Stadtlärm offline** | **Stadtlärm mit Lärmkarte** |
+|---|---|---|
+| Download | `https://stadtlaerm.ch/download/stadtlaerm-offline.apk` | `https://stadtlaerm.ch/download/stadtlaerm-karte.apk` |
+| Gradle flavour / task | `offline` / `assembleOfflineRelease` | `karte` / `assembleKarteRelease` |
+| Permissions | the v0.3.3 set, **no `INTERNET`**, no `ACCESS_NETWORK_STATE` | plus `INTERNET` and `ACCESS_NETWORK_STATE` |
+| «Messwerte teilen» | not in the APK; Einstellungen shows one line pointing to the other edition | yes, off until switched on |
+| Einstellungen → App-Version | «Stadtlärm 0.4.0 (offline)» | «Stadtlärm 0.4.0 (mit Lärmkarte)» |
+
+Both have the same app id (`ch.stadtlaerm.app`), version code and signing key, so each installs
+over the other in both directions and keeps the measurements (the Room schema is the same; the
+upload settings live outside the database and are simply unused by the offline edition). Before
+switching from «mit Lärmkarte» to «offline», delete the server data in the app (Einstellungen →
+Messwerte teilen → «Meine Daten auf dem Server löschen»): the offline edition cannot.
+
+Why two: «no `INTERNET` permission» is a promise anyone can check on the file
+(`aapt2 dump badging stadtlaerm-offline.apk | grep uses-permission`); «upload off by default» has
+to be trusted. The upload code lives only in `app/src/karte/`, so the offline APK does not contain
+it (check: `unzip -p stadtlaerm-offline.apk 'classes*.dex' | grep -a -c 'ch/stadtlaerm/app/upload'`
+prints 0; see PRIVACY.md → «How to verify»).
+
 ## Install (sideload)
 
-The signed release APK is published at
-[stadtlaerm.ch/download/stadtlaerm.apk](https://stadtlaerm.ch/download/stadtlaerm.apk)
-(the filename stays the same across versions; [stadtlaerm.ch](https://stadtlaerm.ch) shows the
-current version and its SHA-256). A German step-by-step guide is on the website.
+The two signed release APKs are published at `https://stadtlaerm.ch/download/stadtlaerm-offline.apk`
+and `https://stadtlaerm.ch/download/stadtlaerm-karte.apk` (the filenames stay the same across
+versions; until v0.4.0's first build there was one file, `stadtlaerm.apk`).
+[stadtlaerm.ch](https://stadtlaerm.ch) shows the current version and the SHA-256 of both. A German
+step-by-step guide is on the website.
 
 > **Upgrading from an earlier test build (v0.1.x)?** Those were debug builds signed with a
 > different key, and Android refuses to update an app across signing keys. Export your data
@@ -153,11 +177,11 @@ current version and its SHA-256). A German step-by-step guide is on the website.
    from the **Files** app (Dateien → Downloads).
 2. Android asks to allow installing unknown apps from that source (Files, Chrome, …): allow it.
 3. If Play Protect warns about an unknown developer: *More details → Install anyway*.
-4. Or with a computer: `adb install stadtlaerm.apk`.
+4. Or with a computer: `adb install -r stadtlaerm-offline.apk` (or `stadtlaerm-karte.apk`).
 5. Start Stadtlärm and allow **microphone** and **notifications** when asked.
 
-To check the download: `sha256sum stadtlaerm.apk` must match the value on the website, and
-`apksigner verify --print-certs stadtlaerm.apk` must show the signer
+To check the download: `sha256sum stadtlaerm-offline.apk` (or `stadtlaerm-karte.apk`) must match
+the value on the website, and `apksigner verify --print-certs <file>` must show the signer
 `CN=Christian Frank, O=Stadtlaerm, L=Zuerich, C=CH` with certificate SHA-256
 `a3d5d10e69b383846ead4d1aac9ea5df9bc32845237506dcd233f097743142be`.
 
@@ -166,13 +190,15 @@ validated on many devices — see "Status" below.
 
 ## Updates without internet access
 
-The app never asks a server for updates itself (up to v0.3.x it had no internet permission at
-all; since v0.4.0 the internet is used only for «Messwerte teilen», never for update checks).
+The app never asks a server for updates itself (the offline edition has no internet permission at
+all; «mit Lärmkarte» uses the internet only for «Messwerte teilen», never for update checks).
 Instead:
 
-- **Einstellungen → App-Version** shows «Stadtlärm 0.3.2 (Build vom 7.10.2026)» and a button
+- **Einstellungen → App-Version** shows «Stadtlärm 0.4.0 (offline)» or «Stadtlärm 0.4.0 (mit Lärmkarte)», the build date («Build vom 10.10.2026») and a button
   **Nach Update suchen**. It opens
-  `https://stadtlaerm.ch/update.html#v=<versionName>&c=<versionCode>` in the browser. The page
+  `https://stadtlaerm.ch/update.html#v=<versionName>&c=<versionCode>&e=<edition>` in the browser
+  (`e` = `BuildConfig.EDITION`: `offline`, `karte` or `labor`; the page offers that edition's APK
+  as the button and the other as a text link, and both when `e` is missing). The page
   ([docs/update.html](../docs/update.html)) carries the published version as
   `data-version`/`data-code` and a small inline script compares the versionCode from the URL
   fragment with it (the version strings if `c` is missing). The part after `#` is never sent to
@@ -366,16 +392,19 @@ requests per run (the server allows 60 per device and hour); a longer backlog co
 later. Errors back off exponentially from 10 minutes; a refused token (401) stops uploads until
 «Neue Kennung». The local database stays the source of truth: nothing is deleted on the phone.
 
-**Code.** Everything network is in `app/src/main/kotlin/ch/stadtlaerm/app/upload/`:
+**Code.** «mit Lärmkarte» only. Everything network is in `app/src/karte/kotlin/ch/stadtlaerm/app/upload/`:
 `UploadClient.kt` (the only class that opens connections: `HttpURLConnection`, one host from
 `BuildConfig.STADTLAERM_API`, HTTPS only, no redirects), `Payloads.kt` (the request bodies),
 `Uploader.kt` (batching, markers, `rejected`, delete; pure JVM), `UploadState.kt` (settings, id,
 markers; the token encrypted with an Android Keystore key), `UploadWorker.kt` (WorkManager
-scheduling). The UI is `ui/ShareScreen.kt`. For a local test server build with
-`-Pstadtlaerm.api=https://…`. The Labor build has none of it enabled and no network permission
-(`BuildConfig.UPLOAD_AVAILABLE = false`, `src/labor/AndroidManifest.xml`).
+scheduling, and `Context.uploadModule`, the process-wide instance). The UI is
+`app/src/karte/.../ui/ShareScreen.kt`; `app/src/karte/.../edition/Edition.kt` hooks it into the
+shared code (start at app launch, the settings card, the screen). For a local test server build
+with `-Pstadtlaerm.api=https://…`. The offline and Labor builds contain none of it (the source set
+is not compiled into them), have `BuildConfig.UPLOAD_AVAILABLE = false`, no `STADTLAERM_API` field
+and no network permission (`src/offline/AndroidManifest.xml`, `src/labor/AndroidManifest.xml`).
 
-**Tests.** `app/src/test/.../upload/UploadTest.kt` runs the uploader against a small HTTP server
+**Tests.** `app/src/testKarte/.../upload/UploadTest.kt` (`testKarteDebugUnitTest`) runs the uploader against a small HTTP server
 on 127.0.0.1 (`FakeServer.kt`, the server's semantics): register, site, exact bodies (no labels, no
 originals, no coordinates), batch limits, duplicates, resume after a failed batch, `rejected`,
 refused token and «Neue Kennung», synchronous delete, failed delete, off by default, the 7-day
@@ -424,8 +453,10 @@ the website's `lv95.js`.
 
 ## Status of v0.4.0
 
-v0.4.0 is a public **test version**: v0.3.4 (no functional change from v0.3.3 in the public app)
-plus the opt-in [«Messwerte teilen»](#messwerte-teilen-opt-in-upload-v040), off by default. The
+v0.4.0 is a public **test version** in two [editions](#editions): «Stadtlärm offline» is v0.3.4
+(no functional change from v0.3.3 in the public app) without any network permission;
+«Stadtlärm mit Lärmkarte» adds the opt-in [«Messwerte teilen»](#messwerte-teilen-opt-in-upload-v040),
+off by default. The
 upload client is unit-tested on the JVM, including a round trip against the real server
 (`RealServerTest`); the APK was built and signed with the Android SDK (platform 35, build-tools
 34.0.0), but v0.4.0 has not yet been run on a device. v0.3.3: v0.3.2 plus a clearer measurement notification («Mikrofon
@@ -456,10 +487,10 @@ from the same code that can **record audio**, to debug the event detector and th
 classifier with real sound — e.g. why highway passes of cars and motorbikes (3–10 s, ≈ 13 dB above
 a quiet background) are not recognised: each clip comes with the classifier's per-second results
 (top-5 labels and scores, category decision, the input gain applied to the model, LAF), so you can
-listen to what the model heard and see what it scored. It is installed next to the public app (own app id, own data, red
+listen to what the model heard and see what it scored. It is installed next to the published app (own app id, own data, red
 icon, a red banner «LABOR-VERSION – kann Audio aufzeichnen» on every screen) and is signed with
 the release key so that it can be updated. It is **never published**: not in `docs/`, not linked
-from the website. The public app contains none of its code (how to check: PRIVACY.md →
+from the website. Neither published edition contains any of its code (how to check: PRIVACY.md →
 «Labor-Build»).
 
 ```sh
@@ -566,16 +597,27 @@ covers its last second, so its trace is complete. If they fall behind, data is d
 ```sh
 export ANDROID_HOME=/path/to/android-sdk   # platform 35, build-tools 35.0.0
 ./gradlew test assembleDebug
-# APKs: app/build/outputs/apk/public/debug/app-public-debug.apk   (the app)
-#       app/build/outputs/apk/labor/debug/app-labor-debug.apk     (Labor build, see below)
+# APKs: app/build/outputs/apk/offline/debug/app-offline-debug.apk   (Stadtlärm offline)
+#       app/build/outputs/apk/karte/debug/app-karte-debug.apk       (Stadtlärm mit Lärmkarte)
+#       app/build/outputs/apk/labor/debug/app-labor-debug.apk       (Labor build, see below)
 ```
 
-The app module has two product flavours (dimension `edition`): **`public`**, the published app,
-and **`labor`**, the unpublished diagnostics build. Tasks are named per variant, e.g.
-`assemblePublicDebug`, `testLaborDebugUnitTest`; `assembleDebug` / `test` run both.
+The app module has three product flavours (dimension `edition`): **`offline`** and **`karte`**,
+the two published [editions](#editions), and **`labor`**, the unpublished diagnostics build (until
+v0.4.0's first build the published app was one flavour, `public`). Tasks are named per variant,
+e.g. `assembleOfflineDebug`, `testKarteDebugUnitTest`, `testLaborDebugUnitTest`; `assembleDebug` /
+`test` run all three. Source sets: `src/main/` (shared), `src/offline/`, `src/karte/` (upload code
+and network manifest), `src/labor/`; tests in `src/test/` (all), `src/testOffline/`,
+`src/testKarte/` (upload), `src/testLabor/`. All tests:
 
-`./gradlew assemblePublicRelease` without a key produces an **unsigned** release APK
-(`app-public-release-unsigned.apk`), which Android will not install until it is signed.
+```sh
+./gradlew --no-daemon :dsp:test :chart:testDebugUnitTest :app:testOfflineDebugUnitTest \
+    :app:testKarteDebugUnitTest :app:testLaborDebugUnitTest
+```
+
+`./gradlew assembleOfflineRelease` (or `assembleKarteRelease`) without a key produces an
+**unsigned** release APK (`app-offline-release-unsigned.apk`), which Android will not install until
+it is signed.
 
 ### Signed release build
 
@@ -594,20 +636,24 @@ keyPassword=…
 Pass its path as a Gradle property or an environment variable:
 
 ```sh
-./gradlew test assemblePublicRelease -Pstadtlaerm.keystoreProperties=$HOME/stadtlaerm-keys/keystore.properties
+./gradlew test assembleOfflineRelease assembleKarteRelease -Pstadtlaerm.keystoreProperties=$HOME/stadtlaerm-keys/keystore.properties
 # or
-STADTLAERM_KEYSTORE_PROPERTIES=$HOME/stadtlaerm-keys/keystore.properties ./gradlew assemblePublicRelease
-# APK: app/build/outputs/apk/public/release/app-public-release.apk
+STADTLAERM_KEYSTORE_PROPERTIES=$HOME/stadtlaerm-keys/keystore.properties ./gradlew assembleOfflineRelease assembleKarteRelease
+# APKs: app/build/outputs/apk/offline/release/app-offline-release.apk
+#       app/build/outputs/apk/karte/release/app-karte-release.apk
 ```
 
 Check the result (build-tools 35):
 
 ```sh
-A=app/build/outputs/apk/public/release/app-public-release.apk
-apksigner verify --verbose --print-certs $A   # v2 + v3, signer DN
-aapt2 dump permissions $A                     # v0.4.0+: INTERNET + ACCESS_NETWORK_STATE, nothing else new
-apkanalyzer dex packages $A | grep -c ch.stadtlaerm.app.labor   # 0: no Labor code (PRIVACY.md)
-sha256sum $A
+for A in app/build/outputs/apk/offline/release/app-offline-release.apk \
+         app/build/outputs/apk/karte/release/app-karte-release.apk; do
+  apksigner verify --verbose --print-certs $A                # v2 + v3, signer DN
+  aapt2 dump badging $A | grep -E '^package:|uses-permission' # offline: no INTERNET / ACCESS_NETWORK_STATE
+  unzip -p $A 'classes*.dex' | grep -a -c 'ch/stadtlaerm/app/upload'   # offline 0, karte > 0
+  unzip -p $A 'classes*.dex' | grep -a -c 'ch/stadtlaerm/app/labor'    # 0: no Labor code (PRIVACY.md)
+  sha256sum $A
+done
 ```
 
 To publish, follow the release checklist below. The release key cannot be replaced without
@@ -616,14 +662,18 @@ forcing every user to uninstall and reinstall, so keep the keystore and its pass
 ### Release checklist
 
 1. Bump `versionName` and `versionCode` in `app/build.gradle.kts`; add a `CHANGELOG.md` entry.
-2. Build signed: `./gradlew test assemblePublicRelease -Pstadtlaerm.keystoreProperties=…`; check the
-   signer certificate SHA-256, that `aapt2 dump permissions` shows exactly the list in PRIVACY.md →
-   «How to verify» (from v0.4.0 with `INTERNET` and `ACCESS_NETWORK_STATE`; the Labor APK without
-   them) and that the dex contains no Labor classes (see above and PRIVACY.md → «Labor-Build»).
-3. Copy `app/build/outputs/apk/public/release/app-public-release.apk` to
-   `../docs/download/stadtlaerm.apk`. **Never** copy a Labor APK into `../docs/`.
-4. Update `../docs/index.html`: version (button note, facts, «Stand des Projekts»), size in MB
-   with a German decimal comma, SHA-256.
+2. Build signed: `./gradlew test assembleOfflineRelease assembleKarteRelease -Pstadtlaerm.keystoreProperties=…`;
+   check for both APKs the signer certificate SHA-256 and the version, that
+   `aapt2 dump badging … | grep uses-permission` shows exactly the lists in PRIVACY.md →
+   «How to verify» (offline: no `INTERNET`, no `ACCESS_NETWORK_STATE`; karte: with both; the Labor
+   APK like offline), that the offline dex has no `ch/stadtlaerm/app/upload` and no
+   `api.stadtlaerm.ch`, and that neither contains Labor classes (see above and PRIVACY.md →
+   «Labor-Build»).
+3. Copy `app/build/outputs/apk/offline/release/app-offline-release.apk` to
+   `../docs/download/stadtlaerm-offline.apk` and `…/karte/release/app-karte-release.apk` to
+   `../docs/download/stadtlaerm-karte.apk`. **Never** copy a Labor APK into `../docs/`.
+4. Update `../docs/index.html`: version (button notes, both facts lists, «Stand des Projekts»),
+   sizes in MB with a decimal comma (e.g. 18,6 MB), both SHA-256.
 5. Update `../docs/update.html`: `data-version` and `data-code` on `<main>`, and the static
    «Aktuelle Version: …» heading (shown before the script runs).
 6. If the inline script of `update.html` changed, recompute its CSP hash:
@@ -654,11 +704,15 @@ chart/ Android library: the history chart (drawing model, Compose Canvas) and th
        JVM tests and Paparazzi renders
 dsp/geo/Lv95.kt          WGS84 ↔ LV95 and hectare cell ids (same formulas as the map's docs/map/lv95.js)
 app/   Android: AudioRecord capture, foreground service, LiteRT YAMNet, Room, Compose UI
-  src/main/     shared code (AudioTap.kt: the no-op hook the Labor recorder plugs into;
-                upload/: the opt-in «Messwerte teilen», the app's only network code)
-  src/public/   the published edition (AudioTapProvider → NoAudioTap, no extra UI)
+  src/main/     shared code (AudioTap.kt: the no-op hook the Labor recorder plugs into; no network code)
+  src/offline/  «Stadtlärm offline» (Edition.kt: AudioTapProvider → NoAudioTap, no upload; manifest
+                removes INTERNET / ACCESS_NETWORK_STATE)
+  src/karte/    «Stadtlärm mit Lärmkarte»: upload/ (the opt-in «Messwerte teilen», the app's only
+                network code), ui/ShareScreen.kt, Edition.kt, manifest with INTERNET + ACCESS_NETWORK_STATE
   src/labor/    Labor edition only: audio recorder, WAV/AAC writers, manifest, clip player, Labor UI, red icon
   src/testLabor/ JVM tests of the Labor recorder and clip-player parts
+  src/testKarte/ JVM tests of the upload (fake server, optional real-server round trip)
+  src/testOffline/ checks that the offline classpath has no upload classes
 tools/verify_yamnet.py    model I/O + Kotlin-vs-Python preprocessing check
 tools/csp_hash.py         CSP script hashes for the website's inline script (docs/update.html)
 ```

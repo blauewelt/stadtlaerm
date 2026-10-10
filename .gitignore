@@ -20,7 +20,7 @@ keystore.properties
 *.keystore
 
 # Local release artefacts. APKs are NOT ignored globally: the website ships the
-# signed release as docs/download/stadtlaerm.apk. Build outputs are covered by build/.
+# signed releases as docs/download/stadtlaerm-{offline,karte}.apk. Build outputs are covered by build/.
 android/dist/
 *.aab
 

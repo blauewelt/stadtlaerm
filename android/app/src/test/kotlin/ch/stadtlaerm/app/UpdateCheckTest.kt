@@ -63,5 +63,12 @@ class UpdateCheckTest {
     fun updateUrlCarriesVersionInFragment() {
         assertEquals("https://stadtlaerm.ch/update.html#v=0.3.1&c=5", UpdateCheck.updateUrl("0.3.1", 5))
         assertEquals("https://stadtlaerm.ch/update.html#v=0.3.1+x%26y&c=5", UpdateCheck.updateUrl("0.3.1 x&y", 5))
+        assertEquals("https://stadtlaerm.ch/update.html#v=0.4.0&c=10&e=offline", UpdateCheck.updateUrl("0.4.0", 10, "offline"))
+        assertEquals("https://stadtlaerm.ch/update.html#v=0.4.0&c=10&e=karte", UpdateCheck.updateUrl("0.4.0", 10, "karte"))
+        // The URL the installed build opens carries its own edition.
+        assertEquals(
+            "https://stadtlaerm.ch/update.html#v=${BuildConfig.VERSION_NAME}&c=${BuildConfig.VERSION_CODE}&e=${BuildConfig.EDITION}",
+            UpdateCheck.updateUrl(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE, BuildConfig.EDITION),
+        )
     }
 }

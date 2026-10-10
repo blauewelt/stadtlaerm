@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OFFLINE edition («Stadtlärm offline»): adds nothing. It only guards the promise «keine
+     Internet-Berechtigung» (PRIVACY.md, guarantee 2) against a library that might merge network
+     permissions in, exactly as the main manifest did up to 0.3.4. Check the built APK with
+     aapt2 dump badging <apk> | grep uses-permission -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+</manifest>

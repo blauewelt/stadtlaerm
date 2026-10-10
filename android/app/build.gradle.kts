@@ -48,12 +48,7 @@ android {
         versionCode = 10
         versionName = "0.4.0"
         buildConfigField("String", "BUILD_DATE", "\"$buildDate\"")
-        // The one host the opt-in upload «Messwerte teilen» talks to (server/DESIGN.md §4). Only
-        // app/src/main/kotlin/ch/stadtlaerm/app/upload/UploadClient.kt opens connections, and only
-        // to this base URL. Override for a local test server with -Pstadtlaerm.api=https://…
-        buildConfigField("String", "STADTLAERM_API", "\"$stadtlaermApi\"")
-        // Whether this edition offers «Messwerte teilen» at all (public: yes; labor: no).
-        buildConfigField("boolean", "UPLOAD_AVAILABLE", "true")
+        // UPLOAD_AVAILABLE, EDITION (and STADTLAERM_API for «mit Lärmkarte») are set per flavour below.
     }
 
     signingConfigs {
@@ -69,16 +64,36 @@ android {
         }
     }
 
-    // Two editions (see PRIVACY.md → «Labor-Build»):
-    // - public: the app that is published. Its source sets contain NO code that writes audio.
-    // - labor:  a diagnostics build that can record audio (event clips, continuous AAC) for
-    //           debugging the event detector and the classifier. All recording code lives in
-    //           src/labor/ only. Never published on the website.
+    // Three editions (see PRIVACY.md, README.md):
+    // - offline: published as «Stadtlärm offline». Exactly what 0.3.3 promised: no INTERNET or
+    //            ACCESS_NETWORK_STATE permission (no manifest of its own beyond a guard that removes
+    //            them), no upload code (src/karte/ only), no server host string.
+    // - karte:   published as «Stadtlärm mit Lärmkarte». Adds the opt-in upload «Messwerte teilen»
+    //            (src/karte/: upload/, ui/ShareScreen.kt, the INTERNET + ACCESS_NETWORK_STATE manifest).
+    //            Off until the person switches it on.
+    // Both share applicationId, versionCode and signer, so either installs over the other in both
+    // directions and keeps the measurements (same Room schema; nothing upload-related is in Room).
+    // Neither source set contains code that writes audio.
+    // - labor:   a diagnostics build that can record audio (event clips, continuous AAC) for
+    //            debugging the event detector and the classifier. All recording code lives in
+    //            src/labor/ only. No network access. Never published on the website.
     flavorDimensions += "edition"
     productFlavors {
-        create("public") {
+        create("offline") {
             dimension = "edition"
             isDefault = true
+            buildConfigField("boolean", "UPLOAD_AVAILABLE", "false")
+            buildConfigField("String", "EDITION", "\"offline\"")
+        }
+        create("karte") {
+            dimension = "edition"
+            buildConfigField("boolean", "UPLOAD_AVAILABLE", "true")
+            buildConfigField("String", "EDITION", "\"karte\"")
+            // The one host the opt-in upload «Messwerte teilen» talks to (server/DESIGN.md §4). Only
+            // app/src/karte/kotlin/ch/stadtlaerm/app/upload/UploadClient.kt opens connections, and only
+            // to this base URL. Override for a local test server with -Pstadtlaerm.api=https://…
+            // Defined for this flavour only, so the host string is not in the offline or labor APK.
+            buildConfigField("String", "STADTLAERM_API", "\"$stadtlaermApi\"")
         }
         create("labor") {
             dimension = "edition"
@@ -86,6 +101,7 @@ android {
             versionNameSuffix = "-labor"
             // Labor keeps no network access (its manifest removes INTERNET): no upload UI, no worker.
             buildConfigField("boolean", "UPLOAD_AVAILABLE", "false")
+            buildConfigField("String", "EDITION", "\"labor\"")
         }
     }
 
@@ -160,8 +176,9 @@ dependencies {
     implementation("com.google.ai.edge.litert:litert:1.4.0")
 
     // Scheduling of the opt-in upload (hourly + after a measurement stops). AndroidX, Apache-2.0.
-    // It does no networking itself; not an analytics or crash-reporting SDK.
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // It does no networking itself; not an analytics or crash-reporting SDK. «mit Lärmkarte» only:
+    // the offline and labor APKs do not contain it.
+    "karteImplementation"("androidx.work:work-runtime-ktx:2.9.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation(kotlin("test"))
@@ -170,7 +187,7 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
-    // testPublicDebugUnitTest → generated/ksp/publicDebug/…
+    // testKarteDebugUnitTest → generated/ksp/karteDebug/…
     val variant = name.removePrefix("test").removeSuffix("UnitTest").replaceFirstChar { it.lowercase() }
     systemProperty(
         "stadtlaerm.generatedDb",

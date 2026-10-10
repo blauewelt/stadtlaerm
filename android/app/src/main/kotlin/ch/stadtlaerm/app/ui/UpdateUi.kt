@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ch.stadtlaerm.app.BuildConfig
 import ch.stadtlaerm.app.container
+import ch.stadtlaerm.app.edition.Edition
 import ch.stadtlaerm.app.update.UpdateCheck
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -38,7 +39,7 @@ val LocalSnackbarHost = staticCompositionLocalOf { SnackbarHostState() }
  * Returns false if no app can open the link.
  */
 fun openUpdatePage(context: Context): Boolean {
-    val url = UpdateCheck.updateUrl(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
+    val url = UpdateCheck.updateUrl(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE, BuildConfig.EDITION)
     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE)
     // No resolveActivity() pre-check: on Android 11+ it needs a <queries> manifest entry and
     // returns null without one. Starting the activity and catching the failure is equivalent.
@@ -103,10 +104,16 @@ fun UpdateReminderLine(modifier: Modifier = Modifier) {
 fun AppVersionCard() {
     val open = rememberUpdateAction()
     SectionCard("App-Version") {
-        Text(
-            "Stadtlärm ${BuildConfig.VERSION_NAME} (Build vom ${UpdateCheck.displayBuildDate(BuildConfig.BUILD_DATE)})",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        val buildDate = UpdateCheck.displayBuildDate(BuildConfig.BUILD_DATE)
+        val label = Edition.versionLabel
+        if (label == null) {
+            // Labor: unchanged.
+            Text("Stadtlärm ${BuildConfig.VERSION_NAME} (Build vom $buildDate)", style = MaterialTheme.typography.bodyMedium)
+        } else {
+            // «Stadtlärm 0.4.0 (offline)» / «Stadtlärm 0.4.0 (mit Lärmkarte)»
+            Text("Stadtlärm ${BuildConfig.VERSION_NAME} ($label)", style = MaterialTheme.typography.bodyMedium)
+            Text("Build vom $buildDate", style = MaterialTheme.typography.bodySmall)
+        }
         OutlinedButton(onClick = open) { Text("Nach Update suchen") }
         Text(
             "Öffnet stadtlaerm.ch im Browser. Die App selbst fragt keinen Server nach Updates.",
